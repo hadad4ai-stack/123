@@ -108,6 +108,7 @@ input,select,textarea{font:inherit;width:100%;border:1px solid var(--border);bor
         <button type="button" class="chip" data-ins="احفظ في ذاكرتك: ">حفظ ذاكرة</button>
         <button type="button" class="chip" data-ins="أنشئ ملف PDF بعنوان ">PDF</button>
         <button type="button" class="chip" data-ins="أنشئ جدول Excel فيه ">Excel</button>
+        <button type="button" class="chip" data-ins="نفّذ كود بايثون يحسب ">Python</button>
         <button type="button" class="chip" data-ins="أنشئ عرض PowerPoint عن ">PowerPoint</button>
       </div>
       <form id="form" class="row">
@@ -141,6 +142,7 @@ input,select,textarea{font:inherit;width:100%;border:1px solid var(--border);bor
     <small>🧠 حفظ واسترجاع الذاكرة</small>
     <small>🔎 البحث في معرفتك</small>
     <small>🌐 جلب صفحات الويب</small>
+    <small>🐍 تنفيذ Python (مفسّر) · 🟨 JavaScript</small>
     <small>📄 إنشاء PDF · 📊 Excel · 📽️ PowerPoint</small>
     <small style="color:#86efac;margin-top:4px">يستدعيها النموذج تلقائياً عند الحاجة.</small>
   </div>
@@ -220,6 +222,8 @@ function calc(expr){var s=String(expr).replace(/[^0-9+\-*/%.()\s]/g,'');if(!s.tr
 var scripts={};
 function ensureScript(url){if(scripts[url])return scripts[url];scripts[url]=new Promise(function(res,rej){var s=document.createElement('script');s.src=url;s.onload=res;s.onerror=function(){rej(new Error('فشل تحميل مكتبة: '+url))};document.head.appendChild(s)});return scripts[url]}
 function download(blob,name){var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(u);a.remove()},1500)}
+var pyodide=null,pyodideLoading=null;
+function ensurePyodide(){if(pyodide)return Promise.resolve(pyodide);if(pyodideLoading)return pyodideLoading;add('sys','🐍 تنزيل بيئة بايثون لأول مرة (قد يستغرق لحظات)...');pyodideLoading=ensureScript('https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js').then(function(){return window.loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.27.2/full/'})}).then(function(p){pyodide=p;return p});return pyodideLoading}
 
 var TOOLS=[
  {type:'function',function:{name:'calculator',description:'احسب تعبيراً رياضياً وأعد الناتج.',parameters:{type:'object',properties:{expression:{type:'string',description:'مثل 25*4+10'}},required:['expression']}}},
@@ -228,6 +232,8 @@ var TOOLS=[
  {type:'function',function:{name:'list_memories',description:'اعرض آخر الذكريات المحفوظة.',parameters:{type:'object',properties:{limit:{type:'number'}}}}},
  {type:'function',function:{name:'knowledge_search',description:'ابحث في معرفة المستخدم المحفوظة.',parameters:{type:'object',properties:{query:{type:'string'}},required:['query']}}},
  {type:'function',function:{name:'web_fetch',description:'اجلب نص صفحة ويب عامة من رابط.',parameters:{type:'object',properties:{url:{type:'string'}},required:['url']}}},
+ {type:'function',function:{name:'run_python',description:'مفسّر أكواد: نفّذ كود Python حقيقي داخل المتصفح (Pyodide) وأعد الإخراج والنتيجة. يدعم numpy وpandas وغيرها.',parameters:{type:'object',properties:{code:{type:'string',description:'كود Python'}},required:['code']}}},
+ {type:'function',function:{name:'run_javascript',description:'مفسّر JavaScript: نفّذ كود JS داخل المتصفح وأعد ما طُبع بـ console.log والنتيجة.',parameters:{type:'object',properties:{code:{type:'string',description:'كود JavaScript'}},required:['code']}}},
  {type:'function',function:{name:'create_pdf',description:'أنشئ ملف PDF قابلاً للتنزيل.',parameters:{type:'object',properties:{title:{type:'string'},content:{type:'string'},filename:{type:'string'}},required:['content']}}},
  {type:'function',function:{name:'create_excel',description:'أنشئ ملف Excel. rows مصفوفة صفوف (كل صف مصفوفة خلايا) أو مصفوفة كائنات.',parameters:{type:'object',properties:{filename:{type:'string'},sheet_name:{type:'string'},rows:{type:'array'}},required:['rows']}}},
  {type:'function',function:{name:'create_pptx',description:'أنشئ عرض PowerPoint. slides مصفوفة من {title, bullets[]}.',parameters:{type:'object',properties:{title:{type:'string'},slides:{type:'array'},filename:{type:'string'}},required:['slides']}}}
@@ -242,6 +248,8 @@ async function execTool(name,args){
   if(name==='list_memories'){var lim=Math.min(50,Math.max(1,Number(args.limit||10)));var r=await sb.from('ai_memories').select('content,memory_type,importance,created_at').order('created_at',{ascending:false}).limit(lim);if(r.error)throw r.error;return{memories:r.data}}
   if(name==='knowledge_search'){var q=String(args.query||'').trim();if(!q)throw new Error('query فارغ');var pat='%'+q.split(/\s+/).slice(0,6).join('%')+'%';var r=await sb.from('ai_knowledge_chunks').select('content,metadata,created_at').ilike('content',pat).limit(8);if(r.error)throw r.error;return{results:r.data,mode:'text'}}
   if(name==='web_fetch'){var r=await sb.functions.invoke('tool-proxy',{body:{action:'web_fetch',url:String(args.url||'')}});if(r.error)throw r.error;return r.data}
+  if(name==='run_python'){var py=await ensurePyodide();var stdout='';py.setStdout({batched:function(s){stdout+=s}});py.setStderr({batched:function(s){stdout+=s}});var code=String(args.code||'');try{await py.loadPackagesFromImports(code)}catch(e){}var result=await py.runPythonAsync(code);var rv='';if(result!==undefined&&result!==null){rv=result.toString?result.toString():String(result);if(result.destroy){try{result.destroy()}catch(e){}}}return{stdout:stdout.trim(),result:rv}}
+  if(name==='run_javascript'){var logs=[];var orig=console.log;console.log=function(){logs.push(Array.prototype.slice.call(arguments).map(function(x){return typeof x==='object'?JSON.stringify(x):String(x)}).join(' '))};try{var v=(0,eval)(String(args.code||''));var rj=(v===undefined?'':(typeof v==='object'?JSON.stringify(v):String(v)));return{logs:logs,result:rj}}finally{console.log=orig}}
   if(name==='create_pdf'){await ensureScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js');var jsPDF=window.jspdf.jsPDF;var doc=new jsPDF();var y=18;if(args.title){doc.setFontSize(16);doc.text(String(args.title),12,y);y+=10}doc.setFontSize(11);var lines=doc.splitTextToSize(String(args.content||''),182);doc.text(lines,12,y);var fn=args.filename||'document.pdf';if(!/\.pdf$/i.test(fn))fn+='.pdf';doc.save(fn);return{created:true,filename:fn,note:'تم تنزيل PDF. ملاحظة: العربية قد لا تظهر متصلة في PDF.'}}
   if(name==='create_excel'){await ensureScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');var rows=args.rows||[];var ws;if(rows.length&&typeof rows[0]==='object'&&!Array.isArray(rows[0]))ws=XLSX.utils.json_to_sheet(rows);else ws=XLSX.utils.aoa_to_sheet(rows.length?rows:[['']]);var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,(args.sheet_name||'Sheet1').slice(0,28));var fn=args.filename||'data.xlsx';if(!/\.xlsx$/i.test(fn))fn+='.xlsx';XLSX.writeFile(wb,fn);return{created:true,filename:fn}}
   if(name==='create_pptx'){await ensureScript('https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js');var p=new PptxGenJS();if(args.title){var t=p.addSlide();t.addText(String(args.title),{x:0.5,y:1.4,w:9,h:1.5,fontSize:34,bold:true,align:'center'})}(args.slides||[]).forEach(function(sl){var s=p.addSlide();if(sl.title)s.addText(String(sl.title),{x:0.5,y:0.3,w:9,h:0.8,fontSize:26,bold:true});var b=(sl.bullets||[]).map(function(x){return{text:String(x),options:{bullet:true,fontSize:18,breakLine:true}}});if(b.length)s.addText(b,{x:0.8,y:1.3,w:8.4,h:4.5})});var fn=args.filename||'presentation.pptx';if(!/\.pptx$/i.test(fn))fn+='.pptx';await p.writeFile({fileName:fn});return{created:true,filename:fn}}
