@@ -197,7 +197,7 @@ function setBusy(v){busy=v;el('sendBtn').disabled=v;el('input').disabled=v}
 function drawer(on){el('drawer').classList.toggle('open',on);el('scrim').classList.toggle('open',on)}
 el('menuBtn').onclick=function(){drawer(true)};
 el('scrim').onclick=function(){drawer(false)};
-function setMode(){mode='local';renderStatus();autoLoad()}
+function setMode(){mode='local';renderStatus()}
 
 function renderModels(){var box=el('modelList');box.innerHTML='';MODELS.forEach(function(m){var d=document.createElement('div');d.className='modelitem'+(m.id===selectedModel?' on':'');d.innerHTML='<div class="mi-main"><div class="mi-name"></div><div class="mi-meta"></div></div><span class="tag '+m.cls+'"></span>';d.querySelector('.mi-name').textContent=m.name;d.querySelector('.mi-meta').textContent=m.size+' · أدوات: '+m.tools+' · '+m.note;d.querySelector('.tag').textContent=m.cls==='s'?'صغير':m.cls==='m'?'متوسط':'كبير';d.onclick=function(){selectedModel=m.id;localStorage.setItem('h4ai_model',m.id);el('customModel').value='';renderModels()};box.appendChild(d)})}
 
@@ -205,7 +205,7 @@ function renderStatus(){var ok=!!(session&&session.access_token);if(!ok){status(
 
 // ---------- auth ----------
 async function refresh(){var r=await sb.auth.getSession();session=r.data.session;renderApp()}
-function renderApp(){var ok=!!(session&&session.access_token);show('auth',!ok);show('chat',ok);el('menuBtn').style.visibility=ok?'visible':'hidden';renderStatus();if(ok){el('userLine').textContent=session.user.email||session.user.id;loadConvos();if(!el('messages').children.length){add('sys','مرحباً 👋 الوضع الحالي: محلي. النموذج يُحمّل تلقائياً ويستطيع استخدام الأدوات.')}if(mode==='local')autoLoad()}}
+function renderApp(){var ok=!!(session&&session.access_token);show('auth',!ok);show('chat',ok);el('menuBtn').style.visibility=ok?'visible':'hidden';renderStatus();if(ok){el('userLine').textContent=session.user.email||session.user.id;loadConvos();if(!el('messages').children.length){add('sys','مرحباً 👋 افتح القائمة ☰ واختر نموذجاً ثم اضغط «تحميل النموذج» للبدء.')}}}
 async function login(){var email=el('email').value.trim(),password=el('password').value;if(!email||!password)return authMsg('أدخل البريد وكلمة المرور.');el('loginBtn').disabled=true;try{var r=await sb.auth.signInWithPassword({email:email,password:password});if(r.error){if(/invalid/i.test(r.error.message)){var s=await sb.auth.signUp({email:email,password:password});if(s.error)return authMsg(s.error.message);if(!s.data.session)return authMsg('تم إنشاء الحساب. إن طُلب تأكيد البريد فأخبر المطوّر لتأكيده.')}else return authMsg(r.error.message)}await refresh()}finally{el('loginBtn').disabled=false}}
 async function logout(){await sb.auth.signOut();session=null;convo=null;chatMsgs=[];localStorage.removeItem('h4ai_convo');drawer(false);el('messages').innerHTML='';renderApp()}
 
@@ -252,7 +252,6 @@ async function execTool(name,args){
 // ---------- local model ----------
 async function ensureTF(){if(!TF){TF=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.6.1');try{TF.env.backends.onnx.wasm.numThreads=1}catch(e){}}return TF}
 function activeModel(){return (el('customModel').value.trim())||selectedModel}
-async function autoLoad(){if(pipe||loading)return;if(!(session&&session.access_token))return;loadLocal()}
 async function loadLocal(){if(loading)return;var model=activeModel();loading=true;pipe=null;loadedModel=null;el('loadBtn').disabled=true;el('prog').style.width='0%';renderStatus();el('localState').textContent='تهيئة وقت التشغيل...';try{var tf=await ensureTF();var dev=el('device').value;var device=dev==='auto'?(navigator.gpu?'webgpu':'wasm'):dev;var progress=function(x){if(typeof x.progress==='number'){el('prog').style.width=Math.round(x.progress)+'%';el('localState').textContent=(x.status||'تحميل')+' '+Math.round(x.progress)+'% '+(x.file||'')}else if(x.status){el('localState').textContent=x.status}};try{pipe=await tf.pipeline('text-generation',model,{device:device,dtype:'q4',progress_callback:progress})}catch(e1){el('localState').textContent='WebGPU فشل، إعادة المحاولة بـ WASM...';pipe=await tf.pipeline('text-generation',model,{device:'wasm',dtype:'q4',progress_callback:progress})}loadedModel=model;el('prog').style.width='100%';el('localState').textContent='✅ جاهز: '+model.split('/').pop()}catch(e){pipe=null;el('localState').textContent='❌ فشل التحميل: '+(e.message||e)+' — جرّب نموذجاً أصغر.'}finally{loading=false;el('loadBtn').disabled=false;renderStatus()}}
 el('loadBtn').onclick=function(){loadLocal()};
 
@@ -291,7 +290,7 @@ async function localGenerate(userText){
 async function send(){if(busy)return;var input=el('input').value.trim();if(!input)return;if(!session)return;setBusy(true);el('input').value='';el('input').style.height='auto';add('user',input);
  try{
   await ensureConvo(input);await saveMsg('user',input,{mode:'local'});
-  if(!pipe){add('sys','جارٍ تحميل النموذج المحلي أول مرة...');await loadLocal();if(!pipe){add('sys','تعذّر تحميل النموذج. افتح القائمة ☰ واختر نموذجاً أصغر.');return}}
+  if(!pipe){add('sys','لا يوجد نموذج محمّل. افتح القائمة ☰ ثم اضغط «تحميل النموذج» للبدء.');return}
   var ans=await localGenerate(input);add('ai',ans);await saveMsg('assistant',ans,{mode:'local',model:loadedModel});
   loadConvos();
  }catch(e){add('sys','خطأ: '+(e.message||JSON.stringify(e)))}finally{setBusy(false)}
