@@ -6,10 +6,12 @@ tool denylist. Designed to run as a Hugging Face Docker Space on port 7860.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from x1_all_tools.dispatcher import ToolDispatcher
@@ -23,6 +25,17 @@ DENY = {d.strip() for d in os.environ.get("X1_DENY", "").split(",") if d.strip()
 registry = build_registry()
 runtime = ToolRuntime.create("workspace")
 dispatcher = ToolDispatcher(registry, runtime)
+WORKSPACE = Path(runtime.workspace).resolve()
+
+
+def _safe_file(path: str) -> Path:
+    p = Path(path)
+    full = (p if p.is_absolute() else (WORKSPACE / p)).resolve()
+    if full != WORKSPACE and WORKSPACE not in full.parents:
+        raise HTTPException(403, "Path is outside the workspace.")
+    if not full.is_file():
+        raise HTTPException(404, "File not found.")
+    return full
 
 app = FastAPI(title="X1 All Tools (secured)", version="1.0.0")
 app.add_middleware(
@@ -65,6 +78,13 @@ def call(req: ToolCall, x_api_key: str | None = Header(default=None, alias="X-AP
     if _denied(req.tool):
         raise HTTPException(403, f"Tool '{req.tool}' is disabled on this server.")
     return dispatcher.call(req.tool, req.arguments).to_dict()
+
+
+@app.get("/download")
+def download(path: str, x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> FileResponse:
+    _auth(x_api_key)
+    full = _safe_file(path)
+    return FileResponse(str(full), filename=full.name)
 
 
 def _denied(tool: str) -> bool:
