@@ -1,0 +1,39 @@
+name: Deploy server to HF Space
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - '.github/workflows/deploy-space.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Push server/ to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE: ${{ secrets.HF_SPACE }}   # e.g. your-username/x1-all-tools
+        run: |
+          if [ -z "$HF_TOKEN" ] || [ -z "$HF_SPACE" ]; then
+            echo "HF_TOKEN / HF_SPACE secrets not set — skipping deploy."
+            exit 0
+          fi
+          pip install -q "huggingface_hub>=0.25.0"
+          python - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          space = os.environ["HF_SPACE"]
+          api.create_repo(space, repo_type="space", space_sdk="docker", exist_ok=True)
+          api.upload_folder(
+              folder_path="server",
+              repo_id=space,
+              repo_type="space",
+              commit_message="Deploy x1_all_tools from GitHub",
+          )
+          print("Deployed server/ to", space)
+          PY
