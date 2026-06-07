@@ -16,24 +16,34 @@ jobs:
       - name: Push server/ to Hugging Face Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HF_SPACE: ${{ secrets.HF_SPACE }}   # e.g. your-username/x1-all-tools
+          HF_SPACE: ${{ secrets.HF_SPACE }}   # optional; just a name like x1-all-tools
         run: |
-          if [ -z "$HF_TOKEN" ] || [ -z "$HF_SPACE" ]; then
-            echo "HF_TOKEN / HF_SPACE secrets not set — skipping deploy."
+          if [ -z "$HF_TOKEN" ]; then
+            echo "HF_TOKEN secret not set — skipping deploy."
             exit 0
           fi
           pip install -q "huggingface_hub>=0.25.0"
           python - <<'PY'
-          import os
+          import os, re
           from huggingface_hub import HfApi
           api = HfApi(token=os.environ["HF_TOKEN"])
-          space = os.environ["HF_SPACE"]
-          api.create_repo(space, repo_type="space", space_sdk="docker", exist_ok=True)
+          user = api.whoami()["name"]
+          raw = os.environ.get("HF_SPACE", "").strip()
+          # take only the name part (after any slash), sanitise to HF rules
+          name = raw.split("/")[-1] if raw else "x1-all-tools"
+          name = re.sub(r"[^A-Za-z0-9._-]", "-", name)
+          name = re.sub(r"[-]{2,}", "-", name).strip("-._") or "x1-all-tools"
+          repo_id = f"{user}/{name}"
+          api.create_repo(repo_id, repo_type="space", space_sdk="docker", exist_ok=True)
           api.upload_folder(
               folder_path="server",
-              repo_id=space,
+              repo_id=repo_id,
               repo_type="space",
               commit_message="Deploy x1_all_tools from GitHub",
           )
-          print("Deployed server/ to", space)
+          sub = re.sub(r"[._]", "-", f"{user}-{name}").lower()
+          print("=========================================")
+          print("DEPLOYED SPACE :", repo_id)
+          print("APP URL (paste in app) : https://%s.hf.space" % sub)
+          print("=========================================")
           PY
