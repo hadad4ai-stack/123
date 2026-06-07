@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#070a12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hadad4AI">
+<title>Hadad4AI Hybrid Agent</title>
+<style>
+:root{color-scheme:dark;--bg:#070a12;--panel:#111827;--panel2:#0f172a;--border:#273449;--text:#f8fafc;--muted:#94a3b8;--accent:#38bdf8;--danger:#fb7185;--ok:#86efac}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(circle at top,#12324a 0,#070a12 38%);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,system-ui,sans-serif}
+.wrap{max-width:980px;margin:0 auto;min-height:100svh;display:grid;grid-template-rows:auto 1fr auto;gap:10px;padding:12px}
+.bar,.panel,.chat{border:1px solid var(--border);background:rgba(17,24,39,.86);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.bar{display:flex;align-items:center;justify-content:space-between;padding:12px}
+.brand{display:flex;gap:10px;align-items:center}
+.logo{width:38px;height:38px;border-radius:14px;background:linear-gradient(135deg,#38bdf8,#a78bfa);display:grid;place-items:center;color:#06111d;font-weight:900}
+.title{font-weight:800}
+.sub{font-size:12px;color:var(--muted);margin-top:2px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--danger);display:inline-block;margin-inline-end:7px}
+.dot.ok{background:var(--ok)}
+.grid{display:grid;grid-template-columns:310px 1fr;gap:10px;min-height:0}
+.panel{padding:12px;overflow:auto}
+.section{border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:12px}
+.section:last-child{border-bottom:0}
+.section h3{font-size:13px;color:var(--muted);margin:0 0 8px}
+input,select,textarea,button{font:inherit}
+input,select,textarea{width:100%;border:1px solid var(--border);border-radius:14px;background:#0b1220;color:var(--text);padding:11px;outline:0;margin:4px 0}
+textarea{min-height:56px;max-height:160px;resize:vertical}
+button{border:0;border-radius:14px;padding:11px 12px;font-weight:800;background:linear-gradient(135deg,#38bdf8,#a78bfa);color:#06111d;margin:4px 4px 4px 0}
+button.secondary{background:#1f2937;color:var(--text);border:1px solid var(--border)}
+button.danger{background:#3a1520;color:#fecdd3;border:1px solid #6b2636}
+button:disabled{opacity:.55}
+.hidden{display:none!important}
+.auth{max-width:520px;margin:auto}
+.notice{font-size:13px;color:var(--muted);line-height:1.55;border:1px solid var(--border);border-radius:14px;background:#0b1220;padding:10px;margin:8px 0}
+.chat{display:grid;grid-template-rows:1fr auto;min-height:0}
+.messages{overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+.msg{white-space:pre-wrap;line-height:1.55;max-width:92%;border:1px solid var(--border);border-radius:18px;padding:11px 12px}
+.msg.user{align-self:flex-start;background:#102842}
+.msg.ai{align-self:flex-end;background:#182235}
+.msg.sys{align-self:center;background:transparent;color:var(--muted);border-style:dashed;text-align:center}
+.composer{border-top:1px solid var(--border);padding:10px}
+.row{display:flex;gap:8px;align-items:end}
+.row textarea{flex:1}
+.list{display:grid;gap:7px;max-height:220px;overflow:auto}
+.item{background:#0b1220;border:1px solid var(--border);border-radius:14px;color:var(--text);text-align:start;padding:9px}
+.small{font-size:12px;color:var(--muted)}
+@media(max-width:760px){.wrap{padding:9px}.grid{grid-template-columns:1fr}.panel{max-height:42svh}.chat{min-height:50svh}.msg{max-width:96%}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar">
+    <div class="brand"><div class="logo">AI</div><div><div class="title">Hadad4AI Hybrid Agent</div><div class="sub" id="userLine">غير مسجّل الدخول</div></div></div>
+    <div class="small"><span id="dot" class="dot"></span><span id="status">غير متصل</span></div>
+  </div>
+
+  <div id="auth" class="panel auth">
+    <h2>تسجيل الدخول</h2>
+    <div class="notice">استخدم البريد وكلمة المرور. النموذج المحلي يعمل داخل Safari بعد تنزيله. الوكيل السحابي يحتاج ضبط مفتاح OpenRouter في أسرار Supabase.</div>
+    <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="البريد الإلكتروني">
+    <input id="password" type="password" autocomplete="current-password" placeholder="كلمة المرور (٦ أحرف على الأقل)">
+    <button id="loginBtn">تسجيل الدخول / إنشاء حساب</button>
+    <div id="authMsg" class="notice hidden"></div>
+  </div>
+
+  <div id="app" class="grid hidden">
+    <aside class="panel">
+      <div class="section">
+        <button id="newBtn" class="secondary">محادثة جديدة</button>
+        <button id="logoutBtn" class="danger">خروج</button>
+      </div>
+      <div class="section">
+        <h3>وضع التشغيل</h3>
+        <select id="mode"><option value="agent">وكيل سحابي مع أدوات</option><option value="local">نموذج محلي في المتصفح</option></select>
+      </div>
+      <div class="section">
+        <h3>النموذج المحلي</h3>
+        <select id="localModel"><option value="onnx-community/SmolLM2-135M-Instruct">SmolLM2 135M Instruct</option><option value="onnx-community/Qwen2.5-0.5B-Instruct">Qwen2.5 0.5B Instruct</option><option value="Xenova/distilgpt2">DistilGPT2 (احتياطي)</option></select>
+        <select id="device"><option value="auto">تلقائي</option><option value="wasm">WASM</option><option value="webgpu">WebGPU</option></select>
+        <input id="tokens" type="number" min="32" max="512" value="128">
+        <button id="loadLocalBtn">تحميل النموذج المحلي</button>
+        <div class="notice" id="localState">لا يوجد نموذج محلي محمّل.</div>
+      </div>
+      <div class="section">
+        <h3>نموذج السحابة (OpenRouter)</h3>
+        <input id="cloudModel" placeholder="مثال: openai/gpt-4o-mini">
+        <div class="small">اكتب الاسم بصيغة provider/model. أمثلة: openai/gpt-4o-mini أو meta-llama/llama-3.1-8b-instruct</div>
+      </div>
+      <div class="section">
+        <h3>أوامر محلية</h3>
+        <div class="notice">/calc 25*4+10<br>/memory نص الملاحظة<br>/memories</div>
+      </div>
+      <div class="section">
+        <h3>المحادثات</h3>
+        <div id="convos" class="list"></div>
+      </div>
+    </aside>
+
+    <main class="chat">
+      <div id="messages" class="messages"></div>
+      <form id="form" class="composer">
+        <button type="button" id="calcBtn" class="secondary">/calc</button>
+        <button type="button" id="memBtn" class="secondary">/memories</button>
+        <div class="row"><textarea id="input" placeholder="اكتب هنا..."></textarea><button id="sendBtn">إرسال</button></div>
+      </form>
+    </main>
+  </div>
+
+  <div class="small" style="text-align:center">Hadad4AI — مستضاف على GitHub Pages، الخادم على Supabase.</div>
+</div>
+
+<script>
+// إعدادات الاتصال — مفتاح anon عام وآمن للنشر في الواجهة.
+window.HADAD4AI_CONFIG = {
+  url: "https://aiiivwwgtgspkyuvywaz.supabase.co",
+  anon: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFpaWl2d3dndGdzcGt5dXZ5d2F6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyODk1ODMsImV4cCI6MjA5NTg2NTU4M30.AZeDi9FKuF07FF0WsmLOPsde2AgiKf7IQ4yRJcO15mw",
+  agent: "agent-chat"
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function(){
+var cfg=window.HADAD4AI_CONFIG;
+var sb=window.supabase.createClient(cfg.url,cfg.anon,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+var session=null, convo=null, busy=false, localPipe=null, localModel=null, mod=null;
+function el(id){return document.getElementById(id)}
+function show(id,on){el(id).classList.toggle('hidden',!on)}
+function msg(t){var m=el('authMsg');m.textContent=t;m.classList.remove('hidden')}
+function status(t,ok){el('status').textContent=t;el('dot').classList.toggle('ok',!!ok)}
+function add(role,text){var d=document.createElement('div');d.className='msg '+role;d.textContent=text;el('messages').appendChild(d);el('messages').scrollTop=el('messages').scrollHeight}
+function setBusy(v){busy=v;el('sendBtn').disabled=v;el('input').disabled=v;el('sendBtn').textContent=v?'جارٍ العمل...':'إرسال'}
+async function refresh(){var r=await sb.auth.getSession();session=r.data.session;render()}
+function render(){var ok=!!(session&&session.access_token);show('auth',!ok);show('app',ok);status(ok?(el('mode').value==='local'?(localPipe?'محلي جاهز':'محلي غير محمّل'):'متصل'):'غير متصل',ok);if(ok){el('userLine').textContent=session.user.email||session.user.id;loadConvos();if(!convo){el('messages').innerHTML='';add('sys','جاهز. اختر الوكيل السحابي أو النموذج المحلي.')}}}
+async function login(){var email=el('email').value.trim(), password=el('password').value;if(!email||!password)return msg('أدخل البريد وكلمة المرور.');var r=await sb.auth.signInWithPassword({email:email,password:password});if(r.error){r=await sb.auth.signUp({email:email,password:password});if(r.error)return msg(r.error.message);msg('تم إنشاء الحساب. إذا كان تأكيد البريد مفعّلاً، أكّد بريدك ثم سجّل الدخول.')}await refresh()}
+async function logout(){await sb.auth.signOut();session=null;convo=null;localStorage.removeItem('h4ai_convo');render()}
+async function ensureConvo(first){if(convo)return convo;var r=await sb.from('ai_conversations').insert({user_id:session.user.id,title:(first||'محادثة جديدة').slice(0,70)}).select('id').single();if(r.error)throw r.error;convo=r.data.id;localStorage.setItem('h4ai_convo',convo);return convo}
+async function loadConvos(){var r=await sb.from('ai_conversations').select('id,title,updated_at').order('updated_at',{ascending:false}).limit(20);var box=el('convos');box.innerHTML='';if(r.error){box.textContent='تعذّر تحميل المحادثات';return}r.data.forEach(function(c){var b=document.createElement('button');b.className='item';b.textContent=c.title||'محادثة';b.onclick=function(){convo=c.id;localStorage.setItem('h4ai_convo',convo);loadMessages(c.id)};box.appendChild(b)})}
+async function loadMessages(id){var r=await sb.from('ai_messages').select('role,content,created_at').eq('conversation_id',id).in('role',['user','assistant']).order('created_at',{ascending:true}).limit(80);el('messages').innerHTML='';if(r.error)return add('sys','خطأ تحميل: '+r.error.message);r.data.forEach(function(m){add(m.role==='user'?'user':'ai',m.content)})}
+function calc(exp){var s=String(exp).replace(/\s+/g,'');if(!/^[0-9+\-*/%.()]+$/.test(s))throw new Error('تعبير غير صالح');return Function('"use strict";return ('+s+')')()}
+async function localCommand(text){if(text.indexOf('/calc ')===0)return 'الناتج: '+calc(text.slice(6));if(text.indexOf('/memory ')===0){var r=await sb.from('ai_memories').insert({user_id:session.user.id,content:text.slice(8),memory_type:'note',importance:3}).select('id').single();if(r.error)throw r.error;return 'تم حفظ الذاكرة: '+r.data.id}if(text==='/memories'){var m=await sb.from('ai_memories').select('content,memory_type,importance').order('created_at',{ascending:false}).limit(10);if(m.error)throw m.error;if(!m.data.length)return 'لا توجد ذاكرة بعد.';return m.data.map(function(x,i){return (i+1)+'. ['+x.memory_type+'] '+x.content}).join('\n')}return null}
+async function loadLocal(){var model=el('localModel').value;var dev=el('device').value;el('localState').textContent='تحميل وقت التشغيل...';el('loadLocalBtn').disabled=true;try{if(!mod){mod=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.6.1');try{mod.env.backends.onnx.wasm.numThreads=1}catch(e){}}var device=dev==='auto'?(navigator.gpu?'webgpu':'wasm'):dev;var progress=function(x){var p=typeof x.progress==='number'?' '+Math.round(x.progress)+'%':'';el('localState').textContent=(x.status||'تحميل')+p+(x.file?' '+x.file:'')};try{localPipe=await mod.pipeline('text-generation',model,{device:device,dtype:'q4',progress_callback:progress})}catch(e){el('localState').textContent='إعادة المحاولة بـ WASM...';localPipe=await mod.pipeline('text-generation',model,{device:'wasm',progress_callback:progress})}localModel=model;el('localState').textContent='تم التحميل: '+model;render()}catch(e){localPipe=null;el('localState').textContent='فشل تحميل النموذج المحلي: '+(e.message||e)}finally{el('loadLocalBtn').disabled=false}}
+async function localGenerate(text){var routed=await localCommand(text);if(routed)return routed;if(!localPipe)throw new Error('حمّل النموذج المحلي أولاً.');var prompt='You are a small local assistant running in Safari. Be brief and useful. Reply in the user language. User: '+text+' Assistant:';var out=await localPipe(prompt,{max_new_tokens:Number(el('tokens').value||128),temperature:.7,do_sample:true,return_full_text:false});var ans=Array.isArray(out)?(out[0].generated_text||''):(out.generated_text||String(out));return ans.replace(prompt,'').trim()||'لا يوجد ناتج محلي واضح.'}
+async function send(text){if(busy)return;var input=(text||el('input').value).trim();if(!input)return;if(!session)return msg('سجّل الدخول أولاً.');setBusy(true);el('input').value='';add('user',input);try{if(el('mode').value==='local'){var id=await ensureConvo(input);await sb.from('ai_messages').insert({user_id:session.user.id,conversation_id:id,role:'user',content:input,metadata:{mode:'local'}});var ans=await localGenerate(input);await sb.from('ai_messages').insert({user_id:session.user.id,conversation_id:id,role:'assistant',content:ans,metadata:{mode:'local',model:localModel}});add('ai',ans);loadConvos()}else{var body={message:input,conversation_id:convo||null};var cm=el('cloudModel').value.trim();if(cm)body.model=cm;var r=await sb.functions.invoke(cfg.agent,{body:body});if(r.error){var det='';try{det=r.error.context&&r.error.context.body?await r.error.context.json().then(function(j){return j.error||''}):''}catch(e){}throw new Error((r.error.message||'خطأ')+(det?': '+det:''))}convo=r.data.conversation_id||convo;localStorage.setItem('h4ai_convo',convo);add('ai',r.data.message||'لا توجد رسالة');loadConvos()}}catch(e){add('sys','خطأ: '+(e.message||JSON.stringify(e)))}finally{setBusy(false)}}
+el('loginBtn').onclick=login;el('logoutBtn').onclick=logout;el('newBtn').onclick=function(){convo=null;localStorage.removeItem('h4ai_convo');el('messages').innerHTML='';add('sys','محادثة جديدة.')};el('loadLocalBtn').onclick=loadLocal;el('calcBtn').onclick=function(){el('input').value='/calc '};el('memBtn').onclick=function(){el('input').value='/memories'};el('mode').onchange=render;el('form').onsubmit=function(e){e.preventDefault();send()};convo=localStorage.getItem('h4ai_convo');sb.auth.onAuthStateChange(function(evt,s){session=s;render()});refresh();
+})();
+</script>
+</body>
+</html>
