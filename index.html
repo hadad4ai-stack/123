@@ -121,11 +121,6 @@ input,select,textarea{font:inherit;width:100%;border:1px solid var(--border);bor
 <!-- DRAWER -->
 <div id="scrim" class="scrim"></div>
 <aside id="drawer" class="drawer">
-  <div class="seg" style="margin-top:6px">
-    <button id="modeLocal" class="on">محلي 📱</button>
-    <button id="modeCloud">سحابي ☁️</button>
-  </div>
-
   <div id="localPane">
     <h3>متصفّح النماذج المحلية</h3>
     <div id="modelList"></div>
@@ -138,12 +133,6 @@ input,select,textarea{font:inherit;width:100%;border:1px solid var(--border);bor
     <div class="bar2"><i id="prog"></i></div>
     <label class="sub" style="display:block;margin-top:10px">أقصى عدد رموز للرد</label>
     <input id="tokens" type="number" min="64" max="1024" value="320">
-  </div>
-
-  <div id="cloudPane" class="hidden">
-    <h3>نموذج السحابة (OpenRouter)</h3>
-    <input id="cloudModel" placeholder="مثال: openai/gpt-4o-mini">
-    <div class="note">يتطلب ضبط OPENAI_API_KEY و OPENAI_BASE_URL في أسرار Supabase. اكتب الاسم بصيغة provider/model.</div>
   </div>
 
   <h3>الأدوات المتاحة</h3>
@@ -205,13 +194,11 @@ function setBusy(v){busy=v;el('sendBtn').disabled=v;el('input').disabled=v}
 function drawer(on){el('drawer').classList.toggle('open',on);el('scrim').classList.toggle('open',on)}
 el('menuBtn').onclick=function(){drawer(true)};
 el('scrim').onclick=function(){drawer(false)};
-function setMode(m){mode=m;el('modeLocal').classList.toggle('on',m==='local');el('modeCloud').classList.toggle('on',m==='cloud');show('localPane',m==='local');show('cloudPane',m==='cloud');renderStatus();if(m==='local')autoLoad()}
-el('modeLocal').onclick=function(){setMode('local')};
-el('modeCloud').onclick=function(){setMode('cloud')};
+function setMode(){mode='local';renderStatus();autoLoad()}
 
 function renderModels(){var box=el('modelList');box.innerHTML='';MODELS.forEach(function(m){var d=document.createElement('div');d.className='modelitem'+(m.id===selectedModel?' on':'');d.innerHTML='<div class="mi-main"><div class="mi-name"></div><div class="mi-meta"></div></div><span class="tag '+m.cls+'"></span>';d.querySelector('.mi-name').textContent=m.name;d.querySelector('.mi-meta').textContent=m.size+' · '+m.note;d.querySelector('.tag').textContent=m.cls==='s'?'صغير':m.cls==='m'?'متوسط':'كبير';d.onclick=function(){selectedModel=m.id;localStorage.setItem('h4ai_model',m.id);el('customModel').value='';renderModels()};box.appendChild(d)})}
 
-function renderStatus(){var ok=!!(session&&session.access_token);if(!ok){status('غير متصل');return}if(mode==='cloud'){status('سحابي جاهز','ok');return}if(loading){status('تحميل النموذج...','warn');return}status(pipe?'محلي جاهز':'محلي غير محمّل',pipe?'ok':'warn')}
+function renderStatus(){var ok=!!(session&&session.access_token);if(!ok){status('غير متصل');return}if(loading){status('تحميل النموذج...','warn');return}status(pipe?'محلي جاهز':'محلي غير محمّل',pipe?'ok':'warn')}
 
 // ---------- auth ----------
 async function refresh(){var r=await sb.auth.getSession();session=r.data.session;renderApp()}
@@ -296,15 +283,9 @@ async function localGenerate(userText){
 // ---------- send ----------
 async function send(){if(busy)return;var input=el('input').value.trim();if(!input)return;if(!session)return;setBusy(true);el('input').value='';el('input').style.height='auto';add('user',input);
  try{
-  var id=await ensureConvo(input);await saveMsg('user',input,{mode:mode});
-  if(mode==='local'){
-   if(!pipe){add('sys','جارٍ تحميل النموذج المحلي أول مرة...');await loadLocal();if(!pipe){add('sys','تعذّر تحميل النموذج. افتح القائمة ☰ واختر نموذجاً أصغر.');return}}
-   var ans=await localGenerate(input);add('ai',ans);await saveMsg('assistant',ans,{mode:'local',model:loadedModel});
-  }else{
-   var body={message:input,conversation_id:convo};var cm=el('cloudModel').value.trim();if(cm)body.model=cm;
-   var r=await sb.functions.invoke(cfg.agent,{body:body});if(r.error){var det='';try{det=await r.error.context.json().then(function(j){return j.error||''})}catch(e){}throw new Error((r.error.message||'خطأ')+(det?': '+det:''))}
-   convo=r.data.conversation_id||convo;localStorage.setItem('h4ai_convo',convo);add('ai',r.data.message||'لا يوجد رد');
-  }
+  await ensureConvo(input);await saveMsg('user',input,{mode:'local'});
+  if(!pipe){add('sys','جارٍ تحميل النموذج المحلي أول مرة...');await loadLocal();if(!pipe){add('sys','تعذّر تحميل النموذج. افتح القائمة ☰ واختر نموذجاً أصغر.');return}}
+  var ans=await localGenerate(input);add('ai',ans);await saveMsg('assistant',ans,{mode:'local',model:loadedModel});
   loadConvos();
  }catch(e){add('sys','خطأ: '+(e.message||JSON.stringify(e)))}finally{setBusy(false)}
 }
@@ -318,7 +299,7 @@ el('input').addEventListener('input',function(){this.style.height='auto';this.st
 el('input').addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
 Array.prototype.forEach.call(document.querySelectorAll('.chip'),function(c){c.onclick=function(){el('input').value=c.getAttribute('data-ins');el('input').focus()}});
 sb.auth.onAuthStateChange(function(evt,s){session=s;renderApp()});
-renderModels();setMode('local');convo=localStorage.getItem('h4ai_convo');refresh();
+renderModels();setMode();convo=localStorage.getItem('h4ai_convo');refresh();
 })();
 </script>
 </body>
