@@ -74,6 +74,21 @@ input,select,textarea{font:inherit;width:100%;border:1px solid var(--border);bor
 .bar2{height:6px;background:#0b1220;border:1px solid var(--border);border-radius:999px;overflow:hidden;margin-top:8px}
 .bar2 i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:.2s}
 </style>
+<style>
+.msg.ai p:first-child{margin-top:0}.msg.ai p:last-child{margin-bottom:0}
+.msg p{margin:.5em 0}.msg ul,.msg ol{padding-inline-start:1.4em;margin:.5em 0}.msg li{margin:.2em 0}
+.msg a{color:var(--accent)}.msg h1,.msg h2,.msg h3{margin:.6em 0 .3em;font-size:1.05em}
+.msg pre{position:relative;background:#050814;border:1px solid var(--border);border-radius:12px;padding:12px;padding-top:30px;overflow:auto;direction:ltr;text-align:left;margin:.5em 0}
+.msg code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+.msg :not(pre)>code{background:#0b1220;border:1px solid var(--border);border-radius:6px;padding:1px 5px}
+.msg table{border-collapse:collapse;font-size:13px;display:block;overflow:auto}.msg th,.msg td{border:1px solid var(--border);padding:4px 8px}
+.msg blockquote{border-inline-start:3px solid var(--border);margin:.5em 0;padding-inline-start:10px;color:var(--muted)}
+.copybtn{position:absolute;top:6px;inset-inline-end:6px;background:#1f2937;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:3px 9px;font-size:11px}
+.msg.typing{display:flex;gap:5px;align-items:center}
+.msg.typing span{width:7px;height:7px;border-radius:50%;background:var(--muted);animation:td 1s infinite}
+.msg.typing span:nth-child(2){animation-delay:.2s}.msg.typing span:nth-child(3){animation-delay:.4s}
+@keyframes td{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+</style>
 </head>
 <body>
 <div class="app">
@@ -226,14 +241,19 @@ function el(id){return document.getElementById(id)}
 function show(id,on){el(id).classList.toggle('hidden',!on)}
 function status(t,k){el('status').textContent=t;var d=el('dot');d.className='dot'+(k?' '+k:'')}
 function authMsg(t){var m=el('authMsg');m.textContent=t;m.classList.remove('hidden')}
-function add(role,text){var d=document.createElement('div');d.className='msg '+role;d.textContent=text;el('messages').appendChild(d);el('messages').scrollTop=el('messages').scrollHeight;return d}
-function setBusy(v){busy=v;el('sendBtn').disabled=v;el('input').disabled=v}
+function add(role,text){var d=document.createElement('div');d.className='msg '+role;d.textContent=text;if(role==='ai')renderMd(d,text);el('messages').appendChild(d);el('messages').scrollTop=el('messages').scrollHeight;return d}
+function setBusy(v){busy=v;el('sendBtn').disabled=v;el('input').disabled=v;if(!v)showTyping(false)}
+var mdReady=null;
+function ensureMd(){if(mdReady)return mdReady;mdReady=Promise.all([ensureScript('https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js'),ensureScript('https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js')]);return mdReady}
+function renderMd(elm,text){ensureMd().then(function(){try{if(window.marked&&window.marked.setOptions)window.marked.setOptions({breaks:true});var html=window.DOMPurify.sanitize(window.marked.parse(String(text||'')));elm.innerHTML=html;addCopyButtons(elm);el('messages').scrollTop=el('messages').scrollHeight}catch(e){}}).catch(function(){})}
+function addCopyButtons(elm){Array.prototype.forEach.call(elm.querySelectorAll('pre'),function(pre){if(pre.querySelector('.copybtn'))return;var b=document.createElement('button');b.className='copybtn';b.type='button';b.textContent='نسخ';b.onclick=function(){var c=pre.querySelector('code');var t=c?c.innerText:pre.innerText;try{navigator.clipboard.writeText(t)}catch(e){}b.textContent='✓';setTimeout(function(){b.textContent='نسخ'},1200)};pre.appendChild(b)})}
+function showTyping(on){var ex=el('typing');if(on){if(ex)return;var d=document.createElement('div');d.id='typing';d.className='msg ai typing';d.innerHTML='<span></span><span></span><span></span>';el('messages').appendChild(d);el('messages').scrollTop=el('messages').scrollHeight}else if(ex){ex.remove()}}
 
 // ---------- drawer ----------
 function drawer(on){el('drawer').classList.toggle('open',on);el('scrim').classList.toggle('open',on)}
 el('menuBtn').onclick=function(){drawer(true)};
 el('scrim').onclick=function(){drawer(false)};
-function setMode(m){mode=(m==='cloud')?'cloud':'local';el('modeLocal').classList.toggle('on',mode==='local');el('modeCloud').classList.toggle('on',mode==='cloud');show('localPane',mode==='local');show('cloudPane',mode==='cloud');renderStatus()}
+function setMode(m){mode=(m==='cloud')?'cloud':'local';localStorage.setItem('h4ai_mode',mode);el('modeLocal').classList.toggle('on',mode==='local');el('modeCloud').classList.toggle('on',mode==='cloud');show('localPane',mode==='local');show('cloudPane',mode==='cloud');renderStatus()}
 el('modeLocal').onclick=function(){setMode('local')};
 el('modeCloud').onclick=function(){setMode('cloud')};
 
@@ -356,18 +376,18 @@ async function localGenerate(userText){
 }
 
 // ---------- send ----------
-async function send(){if(busy)return;var input=el('input').value.trim();if(!input)return;if(!session)return;setBusy(true);el('input').value='';el('input').style.height='auto';add('user',input);
+async function send(){if(busy)return;var input=el('input').value.trim();if(!input)return;if(!session)return;setBusy(true);el('input').value='';el('input').style.height='auto';add('user',input);showTyping(true);
  try{
   if(mode==='cloud'){
    var body={message:input,conversation_id:convo||null};var cm=el('cloudModel').value.trim();if(cm)body.model=cm;
    var r=await sb.functions.invoke(cfg.agent,{body:body});
    if(r.error){var det='';try{det=await r.error.context.json().then(function(j){return j.error||''})}catch(e){}throw new Error((r.error.message||'خطأ')+(det?': '+det:''))}
    convo=r.data.conversation_id||convo;localStorage.setItem('h4ai_convo',convo);
-   add('ai',r.data.message||'لا يوجد رد');loadArtifacts();
+   showTyping(false);add('ai',r.data.message||'لا يوجد رد');loadArtifacts();
   }else{
    await ensureConvo(input);await saveMsg('user',input,{mode:'local'});
    if(!pipe){add('sys','لا يوجد نموذج محمّل. افتح القائمة ☰ ثم اضغط «تحميل النموذج» للبدء.');return}
-   var ans=await localGenerate(input);add('ai',ans);await saveMsg('assistant',ans,{mode:'local',model:loadedModel});
+   var ans=await localGenerate(input);showTyping(false);add('ai',ans);await saveMsg('assistant',ans,{mode:'local',model:loadedModel});
   }
   loadConvos();
  }catch(e){add('sys','خطأ: '+(e.message||JSON.stringify(e)))}finally{setBusy(false)}
@@ -387,7 +407,7 @@ sb.auth.onAuthStateChange(function(evt,s){session=s;renderApp()});
 function srvSaveVals(){var u=cleanUrl(el('srvUrl').value);var k=(el('srvKey').value||'').trim();localStorage.setItem('h4ai_srv_url',u);localStorage.setItem('h4ai_srv_key',k);el('srvUrl').value=u;el('srvKey').value=k;return{url:u,key:k}}
 el('srvSave').onclick=function(){srvSaveVals();el('srvState').textContent='✅ حُفظ.'};
 el('srvTest').onclick=async function(){var s=srvSaveVals();if(!s.url||!s.key){el('srvState').textContent='❌ أدخل الرابط والمفتاح أولاً.';return}el('srvState').textContent='جارٍ الاختبار: '+s.url;try{var h=await fetch(s.url+'/health');if(!h.ok)throw new Error('health '+h.status)}catch(e){el('srvState').textContent='❌ تعذّر الوصول للرابط — تحقق أنه ينتهي بـ .hf.space وأن الـ Space يعمل.';return}try{var t=await fetch(s.url+'/tools?key='+encodeURIComponent(s.key));if(!t.ok){el('srvState').textContent=t.status===401?'❌ المفتاح غير مطابق (401)':t.status===500?'❌ المفتاح غير مضبوط في الـ Space (500)':'❌ خطأ ('+t.status+')';return}var list=await t.json();el('srvState').textContent='✅ متصل · '+list.length+' أداة متاحة'}catch(e){el('srvState').textContent='❌ خطأ أثناء جلب الأدوات: '+(e.message||e)}};
-renderModels();srvRefreshState();setMode();convo=localStorage.getItem('h4ai_convo');refresh();
+renderModels();srvRefreshState();setMode(localStorage.getItem('h4ai_mode'));convo=localStorage.getItem('h4ai_convo');refresh();
 })();
 </script>
 </body>
