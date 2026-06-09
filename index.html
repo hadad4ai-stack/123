@@ -148,8 +148,8 @@ input,select,textarea{font:inherit;width:100%;border:1px solid var(--border);bor
   </div>
 
   <h3>خادم الأدوات (HF Space)</h3>
-  <input id="srvUrl" placeholder="https://USER-SPACE.hf.space" autocomplete="off" autocapitalize="off" spellcheck="false">
-  <input id="srvKey" type="password" placeholder="مفتاح X1_API_KEY" autocomplete="off">
+  <input id="srvUrl" dir="ltr" placeholder="https://USER-SPACE.hf.space" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+  <input id="srvKey" type="password" dir="ltr" placeholder="مفتاح X1_API_KEY" autocomplete="off" autocorrect="off" spellcheck="false">
   <div style="display:flex;gap:6px;margin-top:6px">
     <button id="srvSave" class="btn sec" style="flex:1">حفظ</button>
     <button id="srvTest" class="btn" style="flex:1">اختبار</button>
@@ -233,9 +233,10 @@ function ensureScript(url){if(scripts[url])return scripts[url];scripts[url]=new 
 function download(blob,name){var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(u);a.remove()},1500)}
 var pyodide=null,pyodideLoading=null;
 function ensurePyodide(){if(pyodide)return Promise.resolve(pyodide);if(pyodideLoading)return pyodideLoading;add('sys','🐍 تنزيل بيئة بايثون لأول مرة (قد يستغرق لحظات)...');pyodideLoading=ensureScript('https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js').then(function(){return window.loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.27.2/full/'})}).then(function(p){pyodide=p;return p});return pyodideLoading}
-function cleanUrl(u){u=(u||'').replace(/\s+/g,'').replace(/\/+$/,'');if(u&&!/^https?:\/\//i.test(u))u='https://'+u;return u}
+var DEFAULT_SRV_URL='https://hadadai-x1-all-tools.hf.space';
+function cleanUrl(u){u=(u||'').replace(/[^\x21-\x7E]/g,'').replace(/\/+$/,'');u=u.replace(/^h?t?tps?:\/+/i,function(m){return 'https://'});if(u&&!/^https?:\/\//i.test(u))u='https://'+u;return u}
 function serverCfg(){var u=cleanUrl(localStorage.getItem('h4ai_srv_url')||'');var k=(localStorage.getItem('h4ai_srv_key')||'').trim();if(!u||!k)throw new Error('خادم الأدوات غير مُعد. افتح ☰ وأدخل رابط الـ Space ومفتاح API ثم احفظ.');return{url:u,key:k}}
-function srvRefreshState(){var u=localStorage.getItem('h4ai_srv_url')||'';var k=localStorage.getItem('h4ai_srv_key')||'';el('srvUrl').value=u;el('srvKey').value=k;el('srvState').textContent=(u&&k)?('مضبوط: '+u):'غير مُعد. عند ضبطه تُفعَّل ١٣٠ أداة خادمية.'}
+function srvRefreshState(){var u=localStorage.getItem('h4ai_srv_url')||'';var k=localStorage.getItem('h4ai_srv_key')||'';el('srvUrl').value=u||DEFAULT_SRV_URL;el('srvKey').value=k;el('srvState').textContent=(u&&k)?('مضبوط: '+u):'الرابط مُعبّأ تلقائياً. أدخل المفتاح ثم اضغط حفظ.'}
 
 var TOOLS=[
  {type:'function',function:{name:'calculator',description:'احسب تعبيراً رياضياً وأعد الناتج.',parameters:{type:'object',properties:{expression:{type:'string',description:'مثل 25*4+10'}},required:['expression']}}},
