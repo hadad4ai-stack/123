@@ -1,0 +1,28 @@
+project_id = "aiiivwwgtgspkyuvywaz"
+
+# Edge Function JWT settings (mirror of the deployed configuration).
+# Public functions are deprecated redirects to the GitHub Pages app.
+
+[functions.agent-chat]
+verify_jwt = true
+
+[functions.tool-proxy]
+verify_jwt = true
+
+[functions.structural_blocker]
+verify_jwt = true
+
+[functions.artifact-api]
+verify_jwt = true
+
+[functions.artifact-studio]
+verify_jwt = true
+
+[functions.ai-mobile-app]
+verify_jwt = false
+
+[functions.mobile-ai]
+verify_jwt = false
+
+[functions.mobile-ai-config]
+verify_jwt = false

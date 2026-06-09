@@ -49,3 +49,14 @@ Dashboard → Edge Functions → Secrets:
 ## ملاحظات
 - مفتاح `anon` العام مضمّن في الواجهة (آمن للنشر؛ الحماية عبر RLS).
 - OpenRouter لا يوفّر embeddings؛ سيستخدم البحث النصي الاحتياطي تلقائياً في `knowledge_search`.
+
+## الخادم (Supabase) — محفوظ في المستودع
+كامل خادم Supabase موثّق ومحفوظ الآن في `supabase/`:
+- `supabase/functions/*` — كل دوال الحافة (`agent-chat`, `tool-proxy`, `structural_blocker`, `artifact-api`, `artifact-studio`، + توجيهات قديمة 301).
+- `supabase/config.toml` — إعدادات `verify_jwt` لكل دالة.
+- `supabase/migrations/README.md` — فهرس الترحيلات (23) وطريقة تصديرها.
+- التفاصيل الكاملة (المعمارية، الأدوات، الـ RPCs، الأسرار) في `supabase/README.md`.
+
+## ميزات إضافية في التطبيق
+- **Artifacts**: الوكيل (محلي أو سحابي) يبني منتجاً (تطبيق HTML/مستند) ويعرضه فوراً داخل التطبيق في إطار معزول، مع نسخ محفوظة.
+- **خادم أدوات HF Space (اختياري)**: ~130 أداة (pdf/docx/xlsx/python/git/data...) عبر ضبط رابط الـ Space ومفتاح API في القائمة.
