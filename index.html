@@ -144,6 +144,7 @@ input,select,textarea{font:inherit;width:100%;border:1px solid var(--border);bor
     <small>🌐 جلب صفحات الويب</small>
     <small>🐍 تنفيذ Python (مفسّر) · 🟨 JavaScript</small>
     <small>📄 إنشاء PDF · 📊 Excel · 📽️ PowerPoint</small>
+    <small>🎨 إنشاء منتجات (Artifacts) ومعاينتها فوراً داخل التطبيق</small>
     <small style="color:#86efac;margin-top:4px">يستدعيها النموذج تلقائياً عند الحاجة.</small>
   </div>
 
@@ -156,6 +157,10 @@ input,select,textarea{font:inherit;width:100%;border:1px solid var(--border);bor
   </div>
   <div class="note" id="srvState">غير مُعد. عند ضبطه تُفعَّل ١٣٠ أداة خادمية (pdf, docx, xlsx, data, chart, rag, git, http...).</div>
 
+  <h3>المنتجات (Artifacts)</h3>
+  <button id="artRefresh" class="item" style="text-align:center;font-weight:700">⟳ تحديث القائمة</button>
+  <div id="artList" class="list" style="margin-top:6px"></div>
+
   <h3>المحادثات</h3>
   <button id="newBtn" class="item" style="text-align:center;font-weight:700">＋ محادثة جديدة</button>
   <div id="convos" class="list" style="margin-top:6px"></div>
@@ -164,6 +169,15 @@ input,select,textarea{font:inherit;width:100%;border:1px solid var(--border);bor
   <button id="logoutBtn" class="btn danger" style="width:100%">تسجيل الخروج</button>
   <div class="sub" style="text-align:center;margin-top:14px">Hadad4AI · GitHub Pages + Supabase</div>
 </aside>
+
+<!-- ARTIFACT PREVIEW OVERLAY -->
+<div id="artOverlay" style="position:fixed;inset:0;z-index:60;background:#0b1220;display:none;flex-direction:column">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border)">
+    <div id="artTitle" style="font-weight:800;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Artifact</div>
+    <button id="artClose" class="btn sec" style="flex:none">إغلاق ✕</button>
+  </div>
+  <iframe id="artFrame" style="flex:1;border:0;width:100%;background:#fff"></iframe>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -216,7 +230,7 @@ function renderStatus(){var ok=!!(session&&session.access_token);if(!ok){status(
 
 // ---------- auth ----------
 async function refresh(){var r=await sb.auth.getSession();session=r.data.session;renderApp()}
-function renderApp(){var ok=!!(session&&session.access_token);show('auth',!ok);show('chat',ok);el('menuBtn').style.visibility=ok?'visible':'hidden';renderStatus();if(ok){el('userLine').textContent=session.user.email||session.user.id;loadConvos();if(!el('messages').children.length){add('sys','مرحباً 👋 افتح القائمة ☰ واختر نموذجاً ثم اضغط «تحميل النموذج» للبدء.')}}}
+function renderApp(){var ok=!!(session&&session.access_token);show('auth',!ok);show('chat',ok);el('menuBtn').style.visibility=ok?'visible':'hidden';renderStatus();if(ok){el('userLine').textContent=session.user.email||session.user.id;loadConvos();loadArtifacts();if(!el('messages').children.length){add('sys','مرحباً 👋 افتح القائمة ☰ واختر نموذجاً ثم اضغط «تحميل النموذج» للبدء.')}}}
 async function login(){var email=el('email').value.trim(),password=el('password').value;if(!email||!password)return authMsg('أدخل البريد وكلمة المرور.');el('loginBtn').disabled=true;try{var r=await sb.auth.signInWithPassword({email:email,password:password});if(r.error){if(/invalid/i.test(r.error.message)){var s=await sb.auth.signUp({email:email,password:password});if(s.error)return authMsg(s.error.message);if(!s.data.session)return authMsg('تم إنشاء الحساب. إن طُلب تأكيد البريد فأخبر المطوّر لتأكيده.')}else return authMsg(r.error.message)}await refresh()}finally{el('loginBtn').disabled=false}}
 async function logout(){await sb.auth.signOut();session=null;convo=null;chatMsgs=[];localStorage.removeItem('h4ai_convo');drawer(false);el('messages').innerHTML='';renderApp()}
 
@@ -238,6 +252,13 @@ function cleanUrl(u){u=(u||'').replace(/[^\x21-\x7E]/g,'').replace(/\/+$/,'');u=
 function serverCfg(){var u=cleanUrl(localStorage.getItem('h4ai_srv_url')||'');var k=(localStorage.getItem('h4ai_srv_key')||'').trim();if(!u||!k)throw new Error('خادم الأدوات غير مُعد. افتح ☰ وأدخل رابط الـ Space ومفتاح API ثم احفظ.');return{url:u,key:k}}
 function srvRefreshState(){var u=localStorage.getItem('h4ai_srv_url')||'';var k=localStorage.getItem('h4ai_srv_key')||'';el('srvUrl').value=u||DEFAULT_SRV_URL;el('srvKey').value=k;el('srvState').textContent=(u&&k)?('مضبوط: '+u):'الرابط مُعبّأ تلقائياً. أدخل المفتاح ثم اضغط حفظ.'}
 
+// ---- Artifacts (Agent OS) ----
+function artifactApi(action,method,body,query){var tok=(session&&session.access_token)||cfg.anon;var url=cfg.url+'/functions/v1/artifact-api?action='+encodeURIComponent(action);if(query){for(var k in query){if(query[k]!=null&&query[k]!=='')url+='&'+k+'='+encodeURIComponent(query[k])}}var opt={method:method||'GET',headers:{'apikey':cfg.anon,'Authorization':'Bearer '+tok,'Content-Type':'application/json'}};if((method||'GET')==='POST'&&body)opt.body=JSON.stringify(body);return fetch(url,opt).then(function(r){return r.json().then(function(j){if(!r.ok||j.ok===false)throw new Error((j&&j.error)||('artifact-api '+r.status));return j})})}
+async function showArtifactById(id,version){if(!id)return;var j=await artifactApi('preview','GET',null,{id:id,version:version});showArtifact(j.preview)}
+function showArtifact(p){if(!p)return;el('artTitle').textContent=(p.title||'Artifact')+' · v'+(p.version||1);var f=el('artFrame');if((p.content_format||p.artifact_type)==='html'){f.setAttribute('sandbox',p.sandbox||'allow-scripts allow-forms allow-popups');f.srcdoc=String(p.content||'')}else{f.removeAttribute('sandbox');var esc=String(p.content||'').replace(/[&<>]/g,function(c){return c==='&'?'&amp;':c==='<'?'&lt;':'&gt;'});f.srcdoc='<pre style="white-space:pre-wrap;font-family:-apple-system,sans-serif;padding:16px;direction:ltr">'+esc+'</pre>'}el('artOverlay').style.display='flex'}
+async function loadArtifacts(){try{var j=await artifactApi('list','GET');loadArtifactsInto(j.artifacts||[])}catch(e){}}
+function loadArtifactsInto(items){var box=el('artList');if(!box)return;box.innerHTML='';if(!items||!items.length){box.innerHTML='<div class="sub" style="padding:6px">لا توجد منتجات بعد.</div>';return}items.forEach(function(a){var b=document.createElement('button');b.className='item';b.textContent=(a.title||'Artifact')+' · v'+(a.current_version||a.version||1)+' · '+(a.status||'');b.onclick=function(){showArtifactById(a.id);drawer(false)};box.appendChild(b)})}
+
 var TOOLS=[
  {type:'function',function:{name:'calculator',description:'احسب تعبيراً رياضياً وأعد الناتج.',parameters:{type:'object',properties:{expression:{type:'string',description:'مثل 25*4+10'}},required:['expression']}}},
  {type:'function',function:{name:'get_datetime',description:'أعد التاريخ والوقت الحالي.',parameters:{type:'object',properties:{}}}},
@@ -252,7 +273,11 @@ var TOOLS=[
  {type:'function',function:{name:'server_download',description:'نزّل ملفاً أنشأه الخادم إلى جهاز المستخدم. path يأتي من نتيجة أداة سابقة (مثل pdf.create).',parameters:{type:'object',properties:{path:{type:'string'},filename:{type:'string'}},required:['path']}}},
  {type:'function',function:{name:'create_pdf',description:'أنشئ ملف PDF قابلاً للتنزيل.',parameters:{type:'object',properties:{title:{type:'string'},content:{type:'string'},filename:{type:'string'}},required:['content']}}},
  {type:'function',function:{name:'create_excel',description:'أنشئ ملف Excel. rows مصفوفة صفوف (كل صف مصفوفة خلايا) أو مصفوفة كائنات.',parameters:{type:'object',properties:{filename:{type:'string'},sheet_name:{type:'string'},rows:{type:'array'}},required:['rows']}}},
- {type:'function',function:{name:'create_pptx',description:'أنشئ عرض PowerPoint. slides مصفوفة من {title, bullets[]}.',parameters:{type:'object',properties:{title:{type:'string'},slides:{type:'array'},filename:{type:'string'}},required:['slides']}}}
+ {type:'function',function:{name:'create_pptx',description:'أنشئ عرض PowerPoint. slides مصفوفة من {title, bullets[]}.',parameters:{type:'object',properties:{title:{type:'string'},slides:{type:'array'},filename:{type:'string'}},required:['slides']}}},
+ {type:'function',function:{name:'create_artifact',description:'أنشئ منتجاً (artifact): تطبيق HTML أو مستند، يُحفظ بنسخ ويُعرض للمستخدم فوراً داخل التطبيق. artifact_type: html|markdown|text|json. للـ HTML مرّر مستند HTML كاملاً.',parameters:{type:'object',properties:{title:{type:'string'},content:{type:'string'},artifact_type:{type:'string',enum:['html','markdown','text','json']}},required:['title','content']}}},
+ {type:'function',function:{name:'list_artifacts',description:'اعرض قائمة المنتجات (artifacts) المحفوظة للمستخدم.',parameters:{type:'object',properties:{}}}},
+ {type:'function',function:{name:'preview_artifact',description:'اعرض معاينة منتج للمستخدم داخل التطبيق (في إطار معزول). مرّر id.',parameters:{type:'object',properties:{id:{type:'string'},version:{type:'number'}},required:['id']}}},
+ {type:'function',function:{name:'update_artifact',description:'حدّث محتوى منتج موجود وأنشئ نسخة جديدة.',parameters:{type:'object',properties:{artifact_id:{type:'string'},content:{type:'string'},change_summary:{type:'string'}},required:['artifact_id','content']}}}
 ];
 
 async function execTool(name,args){
@@ -272,6 +297,10 @@ async function execTool(name,args){
   if(name==='create_pdf'){await ensureScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js');var jsPDF=window.jspdf.jsPDF;var doc=new jsPDF();var y=18;if(args.title){doc.setFontSize(16);doc.text(String(args.title),12,y);y+=10}doc.setFontSize(11);var lines=doc.splitTextToSize(String(args.content||''),182);doc.text(lines,12,y);var fn=args.filename||'document.pdf';if(!/\.pdf$/i.test(fn))fn+='.pdf';doc.save(fn);return{created:true,filename:fn,note:'تم تنزيل PDF. ملاحظة: العربية قد لا تظهر متصلة في PDF.'}}
   if(name==='create_excel'){await ensureScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');var rows=args.rows||[];var ws;if(rows.length&&typeof rows[0]==='object'&&!Array.isArray(rows[0]))ws=XLSX.utils.json_to_sheet(rows);else ws=XLSX.utils.aoa_to_sheet(rows.length?rows:[['']]);var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,(args.sheet_name||'Sheet1').slice(0,28));var fn=args.filename||'data.xlsx';if(!/\.xlsx$/i.test(fn))fn+='.xlsx';XLSX.writeFile(wb,fn);return{created:true,filename:fn}}
   if(name==='create_pptx'){await ensureScript('https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js');var p=new PptxGenJS();if(args.title){var t=p.addSlide();t.addText(String(args.title),{x:0.5,y:1.4,w:9,h:1.5,fontSize:34,bold:true,align:'center'})}(args.slides||[]).forEach(function(sl){var s=p.addSlide();if(sl.title)s.addText(String(sl.title),{x:0.5,y:0.3,w:9,h:0.8,fontSize:26,bold:true});var b=(sl.bullets||[]).map(function(x){return{text:String(x),options:{bullet:true,fontSize:18,breakLine:true}}});if(b.length)s.addText(b,{x:0.8,y:1.3,w:8.4,h:4.5})});var fn=args.filename||'presentation.pptx';if(!/\.pptx$/i.test(fn))fn+='.pptx';await p.writeFile({fileName:fn});return{created:true,filename:fn}}
+  if(name==='create_artifact'){var j=await artifactApi('create','POST',{title:String(args.title||'Untitled'),artifact_type:args.artifact_type||'html',content:String(args.content||''),conversation_id:convo||null});await showArtifactById(j.artifact_id);loadArtifacts();return{artifact_id:j.artifact_id,shown:true}}
+  if(name==='list_artifacts'){var j=await artifactApi('list','GET');loadArtifactsInto(j.artifacts||[]);return{artifacts:(j.artifacts||[]).map(function(a){return{id:a.id,title:a.title,type:a.artifact_type,version:a.current_version,status:a.status}})}}
+  if(name==='preview_artifact'){await showArtifactById(String(args.id||''),args.version);return{previewed:true,id:args.id}}
+  if(name==='update_artifact'){var j=await artifactApi('update','POST',{artifact_id:String(args.artifact_id||''),content:String(args.content||''),change_summary:String(args.change_summary||'')});await showArtifactById(String(args.artifact_id||''));loadArtifacts();return{version:j.version}}
   return{error:'أداة غير معروفة: '+name};
  }catch(e){return{error:e.message||String(e)}}
 }
@@ -326,6 +355,8 @@ async function send(){if(busy)return;var input=el('input').value.trim();if(!inpu
 // ---------- wiring ----------
 el('loginBtn').onclick=login;
 el('logoutBtn').onclick=logout;
+el('artRefresh').onclick=function(){loadArtifacts()};
+el('artClose').onclick=function(){el('artOverlay').style.display='none';el('artFrame').removeAttribute('srcdoc')};
 el('newBtn').onclick=function(){convo=null;chatMsgs=[];localStorage.removeItem('h4ai_convo');el('messages').innerHTML='';add('sys','محادثة جديدة.');drawer(false)};
 el('form').onsubmit=function(e){e.preventDefault();send()};
 el('input').addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(140,this.scrollHeight)+'px'});
