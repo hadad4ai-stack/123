@@ -1,0 +1,16 @@
+{
+  "name": "Hadad4AI Hybrid Agent",
+  "short_name": "Hadad4AI",
+  "description": "وكيل ذكاء اصطناعي هجين: نماذج محلية وسحابية مع أدوات وArtifacts.",
+  "start_url": "./?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#070a12",
+  "theme_color": "#070a12",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="theme-color" content="#070a12">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.svg">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Hadad4AI">
@@ -88,6 +90,8 @@ input,select,textarea{font:inherit;width:100%;border:1px solid var(--border);bor
 .msg.typing span{width:7px;height:7px;border-radius:50%;background:var(--muted);animation:td 1s infinite}
 .msg.typing span:nth-child(2){animation-delay:.2s}.msg.typing span:nth-child(3){animation-delay:.4s}
 @keyframes td{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+.convrow{display:flex;gap:4px;align-items:stretch;margin-bottom:2px}
+.minibtn{flex:none;width:34px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:10px;font-size:13px}
 </style>
 </head>
 <body>
@@ -218,7 +222,7 @@ window.HADAD4AI_CONFIG = {
 var cfg=window.HADAD4AI_CONFIG;
 var sb=window.supabase.createClient(cfg.url,cfg.anon,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
 var session=null, convo=null, busy=false, mode='local';
-var TF=null, pipe=null, loadedModel=null, loading=false;
+var TF=null, pipe=null, loadedModel=null, loading=false, stopReq=false;
 var chatMsgs=[]; // in-memory context for the local model
 
 // ---------- model catalogue (small -> large) ----------
@@ -242,7 +246,7 @@ function show(id,on){el(id).classList.toggle('hidden',!on)}
 function status(t,k){el('status').textContent=t;var d=el('dot');d.className='dot'+(k?' '+k:'')}
 function authMsg(t){var m=el('authMsg');m.textContent=t;m.classList.remove('hidden')}
 function add(role,text){var d=document.createElement('div');d.className='msg '+role;d.textContent=text;if(role==='ai')renderMd(d,text);el('messages').appendChild(d);el('messages').scrollTop=el('messages').scrollHeight;return d}
-function setBusy(v){busy=v;el('sendBtn').disabled=v;el('input').disabled=v;if(!v)showTyping(false)}
+function setBusy(v){busy=v;el('sendBtn').textContent=v?'■':'➤';el('input').disabled=v;if(!v)showTyping(false)}
 var mdReady=null;
 function ensureMd(){if(mdReady)return mdReady;mdReady=Promise.all([ensureScript('https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js'),ensureScript('https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js')]);return mdReady}
 function renderMd(elm,text){ensureMd().then(function(){try{if(window.marked&&window.marked.setOptions)window.marked.setOptions({breaks:true});var html=window.DOMPurify.sanitize(window.marked.parse(String(text||'')));elm.innerHTML=html;addCopyButtons(elm);el('messages').scrollTop=el('messages').scrollHeight}catch(e){}}).catch(function(){})}
@@ -269,7 +273,9 @@ async function logout(){await sb.auth.signOut();session=null;convo=null;chatMsgs
 
 // ---------- conversations ----------
 async function ensureConvo(first){if(convo)return convo;var r=await sb.from('ai_conversations').insert({user_id:session.user.id,title:(first||'محادثة جديدة').slice(0,70)}).select('id').single();if(r.error)throw r.error;convo=r.data.id;localStorage.setItem('h4ai_convo',convo);return convo}
-async function loadConvos(){var r=await sb.from('ai_conversations').select('id,title,updated_at').order('updated_at',{ascending:false}).limit(25);var box=el('convos');box.innerHTML='';if(r.error)return;r.data.forEach(function(c){var b=document.createElement('button');b.className='item';b.textContent=c.title||'محادثة';b.onclick=function(){convo=c.id;localStorage.setItem('h4ai_convo',convo);chatMsgs=[];loadMessages(c.id);drawer(false)};box.appendChild(b)})}
+async function loadConvos(){var r=await sb.from('ai_conversations').select('id,title,updated_at').order('updated_at',{ascending:false}).limit(25);var box=el('convos');box.innerHTML='';if(r.error)return;r.data.forEach(function(c){var row=document.createElement('div');row.className='convrow';var b=document.createElement('button');b.className='item';b.style.flex='1';b.style.minWidth='0';b.textContent=c.title||'محادثة';b.onclick=function(){convo=c.id;localStorage.setItem('h4ai_convo',convo);chatMsgs=[];loadMessages(c.id);drawer(false)};var ed=document.createElement('button');ed.className='minibtn';ed.type='button';ed.textContent='✏️';ed.onclick=function(){renameConvo(c)};var del=document.createElement('button');del.className='minibtn';del.type='button';del.textContent='🗑️';del.onclick=function(){deleteConvo(c)};row.appendChild(b);row.appendChild(ed);row.appendChild(del);box.appendChild(row)})}
+async function renameConvo(c){var t=prompt('اسم المحادثة الجديد:',c.title||'');if(t==null)return;t=t.trim();if(!t)return;var r=await sb.from('ai_conversations').update({title:t.slice(0,80)}).eq('id',c.id);if(!r.error)loadConvos()}
+async function deleteConvo(c){if(!confirm('حذف هذه المحادثة نهائياً؟'))return;var r=await sb.from('ai_conversations').delete().eq('id',c.id);if(r.error){alert('تعذّر الحذف: '+r.error.message);return}if(convo===c.id){convo=null;chatMsgs=[];localStorage.removeItem('h4ai_convo');el('messages').innerHTML='';add('sys','حُذفت المحادثة.')}loadConvos()}
 async function loadMessages(id){var r=await sb.from('ai_messages').select('role,content,created_at').eq('conversation_id',id).in('role',['user','assistant']).order('created_at',{ascending:true}).limit(100);el('messages').innerHTML='';if(r.error)return add('sys','خطأ تحميل: '+r.error.message);r.data.forEach(function(m){add(m.role==='user'?'user':'ai',m.content);chatMsgs.push({role:m.role,content:m.content})})}
 async function saveMsg(role,content,meta){try{await sb.from('ai_messages').insert({user_id:session.user.id,conversation_id:convo,role:role,content:content,metadata:meta||{}})}catch(e){}}
 
@@ -351,7 +357,7 @@ function sysPrompt(){return 'أنت مساعد عربي عملي يعمل محل
  'لا تخترع نتائج؛ انتظر نتيجة الأداة (تصلك كرسالة TOOL_RESULT) ثم تابع. عند الانتهاء اكتب الجواب النهائي بلغة المستخدم بدون أي وسوم.\n'+
  'الأدوات المتاحة:\n'+toolsSpec()}
 function parseToolCalls(text){var calls=[];function push(s){try{var o=JSON.parse(String(s).trim());if(o&&o.name)calls.push({name:o.name,arguments:o.arguments||o.parameters||o.args||{}})}catch(e){}}var re=/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g,m;while((m=re.exec(text)))push(m[1]);if(!calls.length){var re2=/```(?:json|tool_code|tool)?\s*([\s\S]*?)```/g;while((m=re2.exec(text)))push(m[1])}if(!calls.length){var b=text.match(/\{[\s\S]*?"name"\s*:[\s\S]*?\}/);if(b)push(b[0])}return calls}
-function stripCalls(text){return text.replace(/<tool_call>[\s\S]*?<\/tool_call>/g,'').replace(/```(?:json|tool_code|tool)?[\s\S]*?```/g,'').replace(/<\|im_end\|>|<end_of_turn>/g,'').trim()}
+function stripCalls(text){return text.replace(/<tool_call>[\s\S]*?<\/tool_call>/g,'').replace(/```tool_code[\s\S]*?```/g,'').replace(/<\|im_end\|>|<end_of_turn>/g,'').trim()}
 function buildPrompt(messages){try{return pipe.tokenizer.apply_chat_template(messages,{add_generation_prompt:true,tokenize:false})}catch(e){var msgs=messages.slice();if(msgs.length&&msgs[0].role==='system'){var sc=msgs.shift().content;for(var i=0;i<msgs.length;i++){if(msgs[i].role==='user'){msgs[i]={role:'user',content:sc+'\n\n'+msgs[i].content};break}}return pipe.tokenizer.apply_chat_template(msgs,{add_generation_prompt:true,tokenize:false})}throw e}}
 
 async function localGenerate(userText){
@@ -360,23 +366,24 @@ async function localGenerate(userText){
  chatMsgs.push({role:'user',content:userText});
  var maxTok=Number(el('tokens').value||320);
  for(var iter=0;iter<4;iter++){
-  var prompt=buildPrompt(chatMsgs);
-  var out=await pipe(prompt,{max_new_tokens:maxTok,temperature:0.6,do_sample:true,return_full_text:false});
+  if(stopReq){var st='⏹️ تم الإيقاف.';add('sys',st);return st}
+  var prompt=buildPrompt(chatMsgs);showTyping(false);
+  var bubble=document.createElement('div');bubble.className='msg ai';bubble.textContent='…';el('messages').appendChild(bubble);el('messages').scrollTop=el('messages').scrollHeight;
+  var acc='',streamer;
+  try{streamer=TF.TextStreamer?new TF.TextStreamer(pipe.tokenizer,{skip_prompt:true,skip_special_tokens:true,callback_function:function(t){acc+=t;var shown=acc.replace(/<tool_call>[\s\S]*?(<\/tool_call>|$)/g,'').replace(/<\|im_end\|>|<end_of_turn>/g,'');bubble.textContent=shown||'…';el('messages').scrollTop=el('messages').scrollHeight}}):undefined}catch(e){streamer=undefined}
+  var out=await pipe(prompt,{max_new_tokens:maxTok,temperature:0.6,do_sample:true,return_full_text:false,streamer:streamer});
   var text=Array.isArray(out)?(out[0].generated_text||''):(out.generated_text||String(out));
   var calls=parseToolCalls(text);
-  if(!calls.length){var fin=stripCalls(text)||'(لا يوجد رد)';chatMsgs.push({role:'assistant',content:fin});return fin}
+  if(!calls.length){var fin=stripCalls(text)||'(لا يوجد رد)';bubble.textContent=fin;renderMd(bubble,fin);chatMsgs.push({role:'assistant',content:fin});return fin}
+  bubble.remove();
   chatMsgs.push({role:'assistant',content:text});
-  for(var i=0;i<calls.length;i++){
-   add('tool','🔧 '+calls[i].name);
-   var res=await execTool(calls[i].name,calls[i].arguments);
-   chatMsgs.push({role:'user',content:'TOOL_RESULT '+calls[i].name+': '+JSON.stringify(res).slice(0,3000)});
-  }
+  for(var i=0;i<calls.length;i++){add('tool','🔧 '+calls[i].name);var res=await execTool(calls[i].name,calls[i].arguments);chatMsgs.push({role:'user',content:'TOOL_RESULT '+calls[i].name+': '+JSON.stringify(res).slice(0,3000)})}
  }
- var f='نفّذت الأدوات لكن لم أصل لإجابة نهائية واضحة.';chatMsgs.push({role:'assistant',content:f});return f;
+ var f='نفّذت الأدوات لكن لم أصل لإجابة نهائية واضحة.';add('ai',f);chatMsgs.push({role:'assistant',content:f});return f;
 }
 
 // ---------- send ----------
-async function send(){if(busy)return;var input=el('input').value.trim();if(!input)return;if(!session)return;setBusy(true);el('input').value='';el('input').style.height='auto';add('user',input);showTyping(true);
+async function send(){if(busy)return;var input=el('input').value.trim();if(!input)return;if(!session)return;stopReq=false;setBusy(true);el('input').value='';el('input').style.height='auto';add('user',input);showTyping(true);
  try{
   if(mode==='cloud'){
    var body={message:input,conversation_id:convo||null};var cm=el('cloudModel').value.trim();if(cm)body.model=cm;
@@ -387,7 +394,7 @@ async function send(){if(busy)return;var input=el('input').value.trim();if(!inpu
   }else{
    await ensureConvo(input);await saveMsg('user',input,{mode:'local'});
    if(!pipe){add('sys','لا يوجد نموذج محمّل. افتح القائمة ☰ ثم اضغط «تحميل النموذج» للبدء.');return}
-   var ans=await localGenerate(input);showTyping(false);add('ai',ans);await saveMsg('assistant',ans,{mode:'local',model:loadedModel});
+   var ans=await localGenerate(input);await saveMsg('assistant',ans,{mode:'local',model:loadedModel});
   }
   loadConvos();
  }catch(e){add('sys','خطأ: '+(e.message||JSON.stringify(e)))}finally{setBusy(false)}
@@ -399,7 +406,7 @@ el('logoutBtn').onclick=logout;
 el('artRefresh').onclick=function(){loadArtifacts()};
 el('artClose').onclick=function(){el('artOverlay').style.display='none';el('artFrame').removeAttribute('srcdoc')};
 el('newBtn').onclick=function(){convo=null;chatMsgs=[];localStorage.removeItem('h4ai_convo');el('messages').innerHTML='';add('sys','محادثة جديدة.');drawer(false)};
-el('form').onsubmit=function(e){e.preventDefault();send()};
+el('form').onsubmit=function(e){e.preventDefault();if(busy){stopReq=true;el('sendBtn').textContent='➤'}else send()};
 el('input').addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(140,this.scrollHeight)+'px'});
 el('input').addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
 Array.prototype.forEach.call(document.querySelectorAll('.chip'),function(c){c.onclick=function(){el('input').value=c.getAttribute('data-ins');el('input').focus()}});
@@ -408,6 +415,7 @@ function srvSaveVals(){var u=cleanUrl(el('srvUrl').value);var k=(el('srvKey').va
 el('srvSave').onclick=function(){srvSaveVals();el('srvState').textContent='✅ حُفظ.'};
 el('srvTest').onclick=async function(){var s=srvSaveVals();if(!s.url||!s.key){el('srvState').textContent='❌ أدخل الرابط والمفتاح أولاً.';return}el('srvState').textContent='جارٍ الاختبار: '+s.url;try{var h=await fetch(s.url+'/health');if(!h.ok)throw new Error('health '+h.status)}catch(e){el('srvState').textContent='❌ تعذّر الوصول للرابط — تحقق أنه ينتهي بـ .hf.space وأن الـ Space يعمل.';return}try{var t=await fetch(s.url+'/tools?key='+encodeURIComponent(s.key));if(!t.ok){el('srvState').textContent=t.status===401?'❌ المفتاح غير مطابق (401)':t.status===500?'❌ المفتاح غير مضبوط في الـ Space (500)':'❌ خطأ ('+t.status+')';return}var list=await t.json();el('srvState').textContent='✅ متصل · '+list.length+' أداة متاحة'}catch(e){el('srvState').textContent='❌ خطأ أثناء جلب الأدوات: '+(e.message||e)}};
 renderModels();srvRefreshState();setMode(localStorage.getItem('h4ai_mode'));convo=localStorage.getItem('h4ai_convo');refresh();
+if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js')}catch(e){}}
 })();
 </script>
 </body>
