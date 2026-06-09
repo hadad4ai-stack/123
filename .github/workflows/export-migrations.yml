@@ -1,0 +1,38 @@
+name: Export DB migrations
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --quiet "psycopg2-binary>=2.9"
+      - name: Export migrations from the database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "SUPABASE_DB_URL secret is not set."
+            echo "Add it: Supabase -> Settings -> Database -> Connection string (Session pooler URI, includes your DB password)."
+            exit 1
+          fi
+          python scripts/export_migrations.py
+      - name: Commit exported migrations
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add supabase/migrations
+          if git diff --cached --quiet; then
+            echo "No migration changes."
+          else
+            git commit -m "Export all DB migrations from the database"
+            git push
+          fi
