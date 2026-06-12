@@ -162,7 +162,7 @@ input,select,textarea{font:inherit;width:100%;border:1px solid var(--border);bor
 
   <div id="cloudPane" class="hidden">
     <h3>الوكيل السحابي (OpenRouter)</h3>
-    <input id="cloudModel" dir="ltr" placeholder="openai/gpt-4o-mini" autocomplete="off" autocorrect="off" spellcheck="false">
+    <input id="cloudModel" dir="ltr" value="openai/gpt-4o-mini" placeholder="openai/gpt-4o-mini" autocomplete="off" autocorrect="off" spellcheck="false">
     <div class="note">يحتاج ضبط OPENAI_API_KEY و OPENAI_BASE_URL في أسرار Supabase. يدعم الأدوات وبناء المنتجات (Artifacts) تلقائياً.</div>
   </div>
 
@@ -274,7 +274,7 @@ async function ensureConvo(first){if(convo)return convo;var r=await sb.from('ai_
 async function loadConvos(){var r=await sb.from('ai_conversations').select('id,title,updated_at').order('updated_at',{ascending:false}).limit(25);var box=el('convos');box.innerHTML='';if(r.error)return;r.data.forEach(function(c){var row=document.createElement('div');row.className='convrow';var b=document.createElement('button');b.className='item';b.style.flex='1';b.style.minWidth='0';b.textContent=c.title||'محادثة';b.onclick=function(){convo=c.id;localStorage.setItem('h4ai_convo',convo);chatMsgs=[];loadMessages(c.id);drawer(false)};var ed=document.createElement('button');ed.className='minibtn';ed.type='button';ed.textContent='✏️';ed.onclick=function(){renameConvo(c)};var del=document.createElement('button');del.className='minibtn';del.type='button';del.textContent='🗑️';del.onclick=function(){deleteConvo(c)};row.appendChild(b);row.appendChild(ed);row.appendChild(del);box.appendChild(row)})}
 async function renameConvo(c){var t=prompt('اسم المحادثة الجديد:',c.title||'');if(t==null)return;t=t.trim();if(!t)return;var r=await sb.from('ai_conversations').update({title:t.slice(0,80)}).eq('id',c.id);if(!r.error)loadConvos()}
 async function deleteConvo(c){if(!confirm('حذف هذه المحادثة نهائياً؟'))return;var r=await sb.from('ai_conversations').delete().eq('id',c.id);if(r.error){alert('تعذّر الحذف: '+r.error.message);return}if(convo===c.id){convo=null;chatMsgs=[];localStorage.removeItem('h4ai_convo');el('messages').innerHTML='';add('sys','حُذفت المحادثة.')}loadConvos()}
-async function loadMessages(id){var r=await sb.from('ai_messages').select('role,content,created_at').eq('conversation_id',id).in('role',['user','assistant']).order('created_at',{ascending:true}).limit(100);el('messages').innerHTML='';if(r.error)return add('sys','خطأ تحميل: '+r.error.message);r.data.forEach(function(m){add(m.role==='user'?'user':'ai',m.content);chatMsgs.push({role:m.role,content:m.content})})}
+async function loadMessages(id){var r=await sb.from('ai_messages').select('role,content,created_at').eq('conversation_id',id).in('role',['user','assistant']).order('created_at',{ascending:true}).limit(100);el('messages').innerHTML='';if(r.error)return add('sys','خطأ تحميل: '+r.error.message);r.data.forEach(function(m){add(m.role==='user'?'user':'ai',m.content)});chatMsgs=r.data.slice(-12).map(function(m){return{role:m.role,content:m.content}})}
 async function saveMsg(role,content,meta){try{await sb.from('ai_messages').insert({user_id:session.user.id,conversation_id:convo,role:role,content:content,metadata:meta||{}})}catch(e){}}
 
 // ---------- tools ----------
@@ -362,7 +362,7 @@ function buildPrompt(messages){try{return pipe.tokenizer.apply_chat_template(mes
 
 async function localGenerate(userText){
  await ensureTF();
- if(!chatMsgs.length)chatMsgs.push({role:'system',content:sysPrompt()});
+ if(!chatMsgs.some(function(m){return m.role==='system'}))chatMsgs.unshift({role:'system',content:sysPrompt()});if(chatMsgs.length>16)chatMsgs=[chatMsgs[0]].concat(chatMsgs.slice(-14));
  chatMsgs.push({role:'user',content:userText});
  var maxTok=Number(el('tokens').value||320);
  for(var iter=0;iter<4;iter++){
@@ -386,7 +386,7 @@ async function localGenerate(userText){
 async function send(){if(busy)return;var input=el('input').value.trim();if(!input)return;if(!session)return;stopReq=false;setBusy(true);el('input').value='';el('input').style.height='auto';add('user',input);showTyping(true);
  try{
   if(mode==='cloud'){
-   var body={message:input,conversation_id:convo||null};var cm=el('cloudModel').value.trim();if(cm)body.model=cm;
+   var body={message:input,conversation_id:convo||null};var cm=el('cloudModel').value.trim()||'openai/gpt-4o-mini';body.model=cm;
    var r=await sb.functions.invoke(cfg.agent,{body:body});
    if(r.error){var det='';try{det=await r.error.context.json().then(function(j){return j.error||''})}catch(e){}throw new Error((r.error.message||'خطأ')+(det?': '+det:''))}
    convo=r.data.conversation_id||convo;localStorage.setItem('h4ai_convo',convo);
