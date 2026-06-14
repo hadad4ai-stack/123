@@ -12,3 +12,8 @@ pillow>=10.0.0
 pytesseract>=0.3.10
 PyYAML>=6.0.0
 requests>=2.31.0
+# On-device-free local model: a small GGUF model run on the Space CPU.
+# The prebuilt CPU wheel index avoids compiling llama.cpp during the Docker build.
+--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+llama-cpp-python>=0.3.2
+huggingface_hub>=0.25.0

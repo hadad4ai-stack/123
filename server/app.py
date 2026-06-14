@@ -13,10 +13,11 @@ from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from x1_all_tools.dispatcher import ToolDispatcher
+from x1_all_tools.llm import MODEL
 from x1_all_tools.runtime import ToolRuntime
 from x1_all_tools.tools import build_registry
 
@@ -41,6 +42,18 @@ app.add_middleware(
 class ToolCall(BaseModel):
     tool: str = Field(..., examples=["pdf.create"])
     arguments: dict[str, Any] = Field(default_factory=dict)
+    api_key: str | None = None
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatRequest(BaseModel):
+    messages: list[ChatMessage] = Field(default_factory=list)
+    max_tokens: int = 320
+    temperature: float = 0.6
     api_key: str | None = None
 
 
@@ -107,6 +120,43 @@ def call(req: ToolCall,
     if _denied(req.tool):
         raise HTTPException(403, f"Tool '{req.tool}' is disabled on this server.")
     return dispatcher.call(req.tool, req.arguments).to_dict()
+
+
+@app.get("/llm/health")
+def llm_health(request: Request,
+               x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+               key: str | None = Query(default=None)) -> dict[str, Any]:
+    _auth(_present_key(request, x_api_key, key))
+    return MODEL.status()
+
+
+@app.post("/llm/warm")
+def llm_warm(request: Request,
+             x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+             key: str | None = Query(default=None)) -> dict[str, Any]:
+    _auth(_present_key(request, x_api_key, key))
+    MODEL.warm_async()
+    return MODEL.status()
+
+
+@app.post("/llm/chat")
+def llm_chat(req: ChatRequest,
+             request: Request,
+             x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+             key: str | None = Query(default=None)) -> StreamingResponse:
+    _auth(_present_key(request, x_api_key, key, req.api_key))
+    msgs = [{"role": m.role, "content": m.content} for m in req.messages if m.content]
+    if not msgs:
+        raise HTTPException(400, "No messages provided.")
+
+    def gen() -> Any:
+        try:
+            for piece in MODEL.stream(msgs, req.max_tokens, req.temperature):
+                yield piece
+        except Exception as exc:  # noqa: BLE001 - stream the error so the client can show it
+            yield f"\n[LLM_ERROR] {type(exc).__name__}: {exc}"
+
+    return StreamingResponse(gen(), media_type="text/plain; charset=utf-8")
 
 
 @app.get("/download")
