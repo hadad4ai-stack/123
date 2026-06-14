@@ -346,8 +346,35 @@ async function execTool(name,args){
 async function ensureTF(){if(!TF){TF=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.6.1');try{TF.env.backends.onnx.wasm.numThreads=1}catch(e){}}return TF}
 function activeModel(){return (el('customModel').value.trim())||selectedModel}
 var isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+function wasmSimdOK(){try{return WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11]))}catch(e){return false}}
 function withTimeout(p,ms,label){return Promise.race([p,new Promise(function(_,rej){setTimeout(function(){rej(new Error((label||'التحميل')+' تجاوز المهلة'))},ms)})])}
-async function loadLocal(){var model=activeModel();loading=true;pipe=null;loadedModel=null;el('loadBtn').disabled=true;el('prog').style.width='0%';renderStatus();el('localState').textContent='تهيئة وقت التشغيل...';try{var tf=await ensureTF();var dev=el('device').value;var device=dev==='auto'?(navigator.gpu?'webgpu':'wasm'):dev;if(isIOS&&device==='wasm'){add('sys','💡 على الآيفون WASM محدود الذاكرة وقد يفشل. للأفضل فعّل WebGPU: إعدادات → Safari → متقدّم → Feature Flags → WebGPU، ثم اختر Device = WebGPU. أو استخدم الوضع السحابي ☁️ (الأكثر موثوقية).')}try{localStorage.setItem('h4ai_loadflag',model.split('/').pop()+' · '+device)}catch(_e){}var progress=function(x){if(typeof x.progress==='number'){el('prog').style.width=Math.round(x.progress)+'%';el('localState').textContent=(x.status||'تحميل')+' '+Math.round(x.progress)+'% '+(x.file||'')}else if(x.status){el('localState').textContent=x.status}};try{pipe=await withTimeout(tf.pipeline('text-generation',model,{device:device,dtype:'q4',progress_callback:progress}),device==='webgpu'?120000:360000,device)}catch(e1){if(device!=='wasm'&&!isIOS){el('localState').textContent='تعذّر '+device+'، إعادة المحاولة بـ WASM...';pipe=await withTimeout(tf.pipeline('text-generation',model,{device:'wasm',dtype:'q4',progress_callback:progress}),360000,'WASM');device='wasm'}else throw e1}loadedModel=model;el('prog').style.width='100%';el('localState').textContent='✅ جاهز: '+model.split('/').pop();try{localStorage.removeItem('h4ai_loadflag')}catch(_e){}add('sys','✅ تم تحميل النموذج ('+model.split('/').pop()+' · '+device+'). تستطيع الدردشة الآن.')}catch(e){pipe=null;try{localStorage.removeItem('h4ai_loadflag')}catch(_e){}var em=(e&&e.message)?String(e.message):String(e);var mem=/memory|allocat|out of|RangeError|^\d+$/i.test(em);el('localState').textContent='❌ '+em;add('sys','❌ فشل تحميل النموذج: '+em+(mem?' — هذا نفاد ذاكرة في Safari (وليس جهازك). الحل: فعّل WebGPU من إعدادات Safari واختر Device=WebGPU، أو استخدم الوضع السحابي ☁️ (موثوق ١٠٠٪).':' — جرّب نموذجاً أصغر أو الوضع السحابي.'))}finally{loading=false;el('loadBtn').disabled=false;renderStatus()}}
+function errDetail(e){var p=[];if(e&&e.name)p.push(e.name);p.push((e&&e.message!=null)?String(e.message):String(e));if(e&&e.stack)p.push(String(e.stack).split('\n').slice(0,2).join(' | '));return p.join(' :: ').slice(0,400)}
+async function loadLocal(){var model=activeModel();loading=true;pipe=null;loadedModel=null;el('loadBtn').disabled=true;el('prog').style.width='0%';renderStatus();el('localState').textContent='تهيئة وقت التشغيل...';
+ var caplogs=[];var oe=console.error,ow=console.warn;
+ function cap(){try{caplogs.push(Array.prototype.map.call(arguments,function(x){try{return typeof x==='object'?JSON.stringify(x):String(x)}catch(_){return String(x)}}).join(' '))}catch(_){}if(caplogs.length>50)caplogs=caplogs.slice(-50)}
+ console.error=function(){cap.apply(null,arguments);oe.apply(console,arguments)};console.warn=function(){cap.apply(null,arguments);ow.apply(console,arguments)};
+ try{
+  var tf=await ensureTF();
+  add('sys','🔧 البيئة: '+(isIOS?'iOS':'Android/أخرى')+' · WebGPU:'+(navigator.gpu?'✓':'✗')+' · ذاكرة≈'+(navigator.deviceMemory||'?')+'GB · SIMD:'+(wasmSimdOK()?'✓':'✗'));
+  var dev=el('device').value;var attempts=[];
+  if(dev==='auto'){if(navigator.gpu)attempts.push({device:'webgpu',dtype:'q4'});attempts.push({device:'wasm',dtype:'q4'},{device:'wasm',dtype:'fp16'},{device:'wasm',dtype:'q8'});}
+  else{attempts.push({device:dev,dtype:'q4'},{device:dev,dtype:'fp16'},{device:dev,dtype:'q8'});}
+  var progress=function(x){if(typeof x.progress==='number'){el('prog').style.width=Math.round(x.progress)+'%';el('localState').textContent=(x.status||'تحميل')+' '+Math.round(x.progress)+'% '+(x.file||'')}else if(x.status){el('localState').textContent=x.status}};
+  for(var i=0;i<attempts.length;i++){var a=attempts[i];caplogs=[];
+   try{
+    el('localState').textContent='محاولة '+(i+1)+'/'+attempts.length+': '+a.device+'/'+a.dtype+'...';
+    try{localStorage.setItem('h4ai_loadflag',model.split('/').pop()+' '+a.device+'/'+a.dtype)}catch(_e){}
+    pipe=await withTimeout(tf.pipeline('text-generation',model,{device:a.device,dtype:a.dtype,progress_callback:progress}),a.device==='webgpu'?120000:300000,a.device+'/'+a.dtype);
+    loadedModel=model;el('prog').style.width='100%';el('localState').textContent='✅ جاهز: '+model.split('/').pop()+' ('+a.device+'/'+a.dtype+')';
+    try{localStorage.removeItem('h4ai_loadflag')}catch(_e){}
+    add('sys','✅ تم تحميل النموذج ('+a.device+'/'+a.dtype+'). تستطيع الدردشة الآن.');return;
+   }catch(e){var d=errDetail(e);var logs=caplogs.filter(function(l){return /error|abort|memory|fail|exception|out of|wasm|onnx|backend|simd|threw/i.test(l)}).slice(-3).join(' | ');add('sys','⚠️ فشل '+a.device+'/'+a.dtype+': '+d+(logs?(' — سجل onnx: '+logs.slice(0,350)):''));}
+  }
+  pipe=null;el('localState').textContent='❌ فشل التحميل بكل الطرق';try{localStorage.removeItem('h4ai_loadflag')}catch(_e){}
+  add('sys','❌ تعذّر تشغيل النموذج محلياً بكل الصيغ. انسخ لي الرسائل ⚠️ أعلاه. الحل المضمون الآن: الوضع السحابي ☁️.');
+ }catch(e){pipe=null;add('sys','❌ خطأ عام: '+errDetail(e));}
+ finally{console.error=oe;console.warn=ow;loading=false;el('loadBtn').disabled=false;renderStatus();}
+}
 el('loadBtn').onclick=function(){loadLocal()};
 
 function toolsSpec(){return TOOLS.map(function(t){var f=t.function;var p=(f.parameters&&f.parameters.properties)?Object.keys(f.parameters.properties).join(', '):'';return '- '+f.name+': '+f.description+(p?' (معاملات: '+p+')':'')}).join('\n')}
