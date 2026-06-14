@@ -1,0 +1,13 @@
+{
+  "appId": "com.hadad4ai.app",
+  "appName": "Hadad4AI",
+  "webDir": "www",
+  "server": {
+    "url": "https://hadad4ai-stack.github.io/123/",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}
