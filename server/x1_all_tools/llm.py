@@ -22,6 +22,9 @@ DEFAULT_REPO = os.environ.get("LLM_REPO", "Qwen/Qwen2.5-0.5B-Instruct-GGUF")
 DEFAULT_FILE = os.environ.get("LLM_FILE", "qwen2.5-0.5b-instruct-q4_k_m.gguf")
 CTX = int(os.environ.get("LLM_CTX", "4096"))
 THREADS = int(os.environ.get("LLM_THREADS", "0")) or None
+# Qwen2.5 (the default) uses the ChatML prompt format. Set it explicitly so we
+# don't depend on the GGUF metadata being auto-detected. Override for other models.
+CHAT_FORMAT = os.environ.get("LLM_CHAT_FORMAT", "chatml").strip() or None
 
 
 class ChatModel:
@@ -67,6 +70,7 @@ class ChatModel:
                     n_ctx=CTX,
                     n_threads=THREADS,
                     n_batch=256,
+                    chat_format=CHAT_FORMAT,
                     verbose=False,
                 )
                 self.state = "ready"
