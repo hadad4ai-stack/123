@@ -344,7 +344,7 @@ async function execTool(name,args){
 }
 
 // ---------- local model ----------
-var APP_VER='25';
+var APP_VER='26';
 async function ensureTF(){if(!TF){TF=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.6.1');try{TF.env.allowLocalModels=false;TF.env.backends.onnx.wasm.numThreads=1;TF.env.backends.onnx.wasm.proxy=false;}catch(e){}}return TF}
 function activeModel(){return (el('customModel').value.trim())||selectedModel}
 var isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -409,7 +409,7 @@ async function loadServerModel(){
 
 async function serverGenerate(userText){
  var s=serverCfg();
- if(!chatMsgs.some(function(m){return m.role==='system'}))chatMsgs.unshift({role:'system',content:sysPrompt()});if(chatMsgs.length>16)chatMsgs=[chatMsgs[0]].concat(chatMsgs.slice(-14));
+ if(!chatMsgs.some(function(m){return m.role==='system'}))chatMsgs.unshift({role:'system',content:sysPromptServer()});if(chatMsgs.length>16)chatMsgs=[chatMsgs[0]].concat(chatMsgs.slice(-14));
  chatMsgs.push({role:'user',content:userText});
  var maxTok=Number(el('tokens').value||320);var qs='?key='+encodeURIComponent(s.key);
  for(var iter=0;iter<4;iter++){
@@ -438,6 +438,13 @@ function sysPrompt(){return 'أنت مساعد عربي عملي يعمل محل
  '<tool_call>{"name":"اسم_الأداة","arguments":{ ... }}</tool_call>\n'+
  'لا تخترع نتائج؛ انتظر نتيجة الأداة (تصلك كرسالة TOOL_RESULT) ثم تابع. عند الانتهاء اكتب الجواب النهائي بلغة المستخدم بدون أي وسوم.\n'+
  'الأدوات المتاحة:\n'+toolsSpec()}
+// Compact prompt for the small CPU server model: a short tool list keeps prompt
+// evaluation fast so the first token arrives in seconds, not a minute.
+function sysPromptServer(){return 'أنت مساعد عربي ذكي وموجز. أجب مباشرةً وبدقة بلغة المستخدم.\n'+
+ 'لديك أدوات اختيارية. إن احتجت أداة، أخرِج هذا الوسم فقط:\n'+
+ '<tool_call>{"name":"الاسم","arguments":{...}}</tool_call>\n'+
+ 'ثم انتظر رسالة TOOL_RESULT وتابع. إن لم تحتج أداة، أجب مباشرةً بدون أي وسم.\n'+
+ 'الأدوات: calculator(expression), get_datetime(), web_fetch(url), run_python(code), create_pdf(content,title), create_excel(rows), create_pptx(slides), server_run(tool,arguments), create_artifact(title,content,artifact_type).'}
 function parseToolCalls(text){var calls=[];function push(s){try{var o=JSON.parse(String(s).trim());if(o&&o.name)calls.push({name:o.name,arguments:o.arguments||o.parameters||o.args||{}})}catch(e){}}var re=/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g,m;while((m=re.exec(text)))push(m[1]);if(!calls.length){var re2=/```(?:json|tool_code|tool)?\s*([\s\S]*?)```/g;while((m=re2.exec(text)))push(m[1])}if(!calls.length){var b=text.match(/\{[\s\S]*?"name"\s*:[\s\S]*?\}/);if(b)push(b[0])}return calls}
 function stripCalls(text){return text.replace(/<tool_call>[\s\S]*?<\/tool_call>/g,'').replace(/```tool_code[\s\S]*?```/g,'').replace(/<\|im_end\|>|<end_of_turn>/g,'').trim()}
 function buildPrompt(messages){try{return pipe.tokenizer.apply_chat_template(messages,{add_generation_prompt:true,tokenize:false})}catch(e){var msgs=messages.slice();if(msgs.length&&msgs[0].role==='system'){var sc=msgs.shift().content;for(var i=0;i<msgs.length;i++){if(msgs[i].role==='user'){msgs[i]={role:'user',content:sc+'\n\n'+msgs[i].content};break}}return pipe.tokenizer.apply_chat_template(msgs,{add_generation_prompt:true,tokenize:false})}throw e}}

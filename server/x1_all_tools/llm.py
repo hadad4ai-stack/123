@@ -69,7 +69,7 @@ class ChatModel:
                     model_path=path,
                     n_ctx=CTX,
                     n_threads=THREADS,
-                    n_batch=256,
+                    n_batch=512,  # larger batch → faster prompt evaluation on CPU
                     chat_format=CHAT_FORMAT,
                     verbose=False,
                 )
